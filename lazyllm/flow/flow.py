@@ -49,6 +49,9 @@ def _is_function(f):
                           types.BuiltinMethodType, types.MethodType, types.LambdaType))
 
 class FlowBase(metaclass=_MetaBind):
+    """
+    模块系统的基础类，支持嵌套、上下文管理器等
+    """
     def __init__(self, *items, item_names=[], auto_capture=False) -> None:
         self._father = None
         self._items, self._item_names, self._item_ids = [], [], []
@@ -148,6 +151,9 @@ setattr(bind, '__exit__', _bind_exit)
 # TODO(wangzhihong): support workflow launcher.
 # Disable item launchers if launcher is already set in workflow.
 class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
+    """
+    所有流程模块的基类，提供 call 等通用逻辑
+    """
     def __init__(self, *args, post_action=None, auto_capture=False, **kw):
         assert len(args) == 0 or len(kw) == 0, f'Cannot provide args `{args}` and kwargs `{kw}` at the same time'
         if len(args) > 0 and isinstance(args[0], (tuple, list)):
@@ -160,6 +166,9 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         self._hooks = set()
 
     def __call__(self, *args, **kw):
+        """
+        负责DAG中，模块的调用链
+        """
         hook_objs = []
         for hook_type in self._hooks:
             if isinstance(hook_type, LazyLLMHook):
@@ -167,9 +176,13 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             else:
                 hook_objs.append(hook_type(self))
             hook_objs[-1].pre_hook(*args, **kw)
+
+        # _run是子类必须实现的方法，用于执行模块逻辑    
         output = self._run(args[0] if len(args) == 1 else package(args), **kw)
         if self.post_action is not None: self.invoke(self.post_action, output)
         if self._sync: self.wait()
+
+        # _post_process是子类可选实现的方法，用于处理输出
         r = self._post_process(output)
         for hook_obj in hook_objs[::-1]:
             hook_obj.post_hook(r)
@@ -215,6 +228,10 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
 
     # bind_args: dict(input=input, args=dict(key=value))
     def invoke(self, it, __input, *, bind_args_source=None, **kw):
+        """
+        模块间调用和参数绑定的核心方法
+        """
+        # 如果 it 是一个 bind 实例，则处理绑定参数
         if isinstance(it, bind):
             if it._has_root:
                 it._args = [a.get_from(self.ancestor) if isinstance(a, type(root)) else a for a in it._args]
@@ -225,6 +242,8 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 it._kw = {k: self.output(v) if v in self._items else v for k, v in it._kw.items()}
             kw['_bind_args_source'] = bind_args_source
         try:
+            # 直接调用 it(__input, **kw)，即模块的 call 方法
+            # __input 是上一个模块的输出
             if not isinstance(it, LazyLLMFlowsBase) and isinstance(__input, (package, kwargs)):
                 return it(*__input, **kw) if isinstance(__input, package) else it(**__input, **kw)
             else:
@@ -284,13 +303,18 @@ class Pipeline(LazyLLMFlowsBase):
     def output(self, module, unpack=False): return bind.Args(self.id(), self.id(module), unpack=unpack)
 
     def _run(self, __input, **kw):
+        """
+        实现了模块的链式调用
+        """
         output = __input
         bind_args_source = dict(source=self.id(), input=output, kwargs=kw.copy())
         if config['save_flow_result'] or __class__.g_save_flow_result or (
                 self.save_flow_result and __class__.g_save_flow_result is not False):
             globals['bind_args'][self.id()] = bind_args_source
         for _ in range(self._loop_count):
+            #  遍历模块链
             for it in self._items:
+                # 将上一个模块的输出作为下一个模块的输入
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
                 kw.clear()
                 bind_args_source[self.id(it)] = output
@@ -398,6 +422,9 @@ class Parallel(LazyLLMFlowsBase):
         return cls(*args, _concurrent=False, **kw)
 
     def _run(self, __input, items=None, **kw):
+        """
+        实现了多个模块的并发调用
+        """
         if items is None:
             items = self._items
             size = len(items)
@@ -434,6 +461,9 @@ class Parallel(LazyLLMFlowsBase):
             return package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
 
     def _post_process(self, output):
+        """
+        输出结果的封装
+        """
         if self._post_process_type == Parallel.PostProcessType.DICT:
             assert self._item_names, 'Item name should be set when you want to return dict.'
             output = {k: v for k, v in zip(self._item_names, output)}
@@ -499,6 +529,9 @@ class Switch(LazyLLMFlowsBase):
         self._conversion = conversion
 
     def _run(self, __input, **kw):
+        """
+        实现条件分支逻辑
+        """
         exp = __input
         if not self._judge_on_full_input:
             assert isinstance(__input, tuple) and len(__input) >= 2
@@ -551,6 +584,9 @@ class IFS(LazyLLMFlowsBase):
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
 #      ⬆----------------------------------------|
 class Loop(Pipeline):
+    """
+    Loop循环流程实际上就是Pipeline的一个特例
+    """
     def __init__(self, *item, stop_condition=None, count=sys.maxsize, post_action=None,
                  auto_capture=False, judge_on_full_input=True, **kw):
         super().__init__(*item, post_action=post_action, auto_capture=auto_capture, **kw)
@@ -672,6 +708,9 @@ class Graph(LazyLLMFlowsBase):
         return self.invoke(node.func, input, **kw)
 
     def _run(self, __input, **kw):
+        """
+        实现图结构执行逻辑
+        """
         if not self._sorted_nodes: self._sorted_nodes = self.topological_sort()
         intermediate_results = dict(lock=threading.Lock(), values={})
 

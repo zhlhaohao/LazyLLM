@@ -1,3 +1,7 @@
+python -m venv .venv
+
+
+
 <div align="center">
   <img src="https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/docs/assets/LazyLLM-logo.png" width="100%"/>
 </div>

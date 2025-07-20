@@ -118,6 +118,7 @@ class Bind(object):
                           or any([isinstance(v, AttrTree) for v in kw.values()]))
 
     def __ror__(self, __value: Callable):
+        """ | 运算符重载，实现 module | bind(...) 的语法"""
         if self._f is not Bind._None: self._args = (self._f,) + self._args
         self._f = __value
         return self

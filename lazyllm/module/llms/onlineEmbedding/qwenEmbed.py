@@ -7,7 +7,7 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
     def __init__(self,
                  embed_url: str = ("https://dashscope.aliyuncs.com/api/v1/services/"
                                    "embeddings/text-embedding/text-embedding"),
-                 embed_model_name: str = "text-embedding-v1",
+                 embed_model_name: str = "text-embedding-v4",
                  api_key: str = None):
         super().__init__("QWEN", embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name)
 

@@ -31,11 +31,22 @@ documents = Document(dataset_path="rag_master", embed=OnlineEmbeddingModule(), m
 documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 
 with pipeline() as ppl:
+    # node1. 进入并行子流程流, parallel().sum表示输出结果用sum 聚合
     with parallel().sum as ppl.prl:
         prl.retriever1 = Retriever(documents, group_name="sentences", similarity="cosine", topk=3)
         prl.retriever2 = Retriever(documents, "CoarseChunk", "bm25_chinese", 0.003, topk=3)
-    ppl.reranker = Reranker("ModuleReranker", model=OnlineEmbeddingModule(type="rerank"), topk=1, output_format='content', join=True) | bind(query=ppl.input)
+
+    # node2: reranker
+    ppl.reranker = Reranker("ModuleReranker", model=OnlineEmbeddingModule(type="rerank"), topk=3, output_format='content', join=True) | bind(query=ppl.input)
+
+    """ 
+    | 运算符被 ror重载，等价于:
+    b = bind(query=ppl.input)
+    formatter = b.__ror__((lambda nodes, query: ...))    
+    然后 LazyLLM 把这个 lambda 函数作为 _f 存储在 Bind 实例中。
+    """
     ppl.formatter = (lambda nodes, query: dict(context_str=nodes, query=query)) | bind(query=ppl.input)
+
     ppl.llm = lazyllm.OnlineChatModule(stream=True, source="qwen").prompt(lazyllm.ChatPrompter(prompt, extra_keys=["context_str"]))
 
 

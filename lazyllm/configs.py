@@ -23,7 +23,7 @@ class Config(object):
         self.cgf_path = os.path.join(self['home'], 'config.json')
         if os.path.exists(self.cgf_path):
             with open(self.cgf_path, 'r+') as f:
-                self.cfgs = Config.get_config(json.loads(f))
+                self.cfgs = Config.get_config(json.load(f))
 
     def done(self):
         assert len(self.cfgs) == 0, f'Invalid cfgs ({"".join(self.cfgs.keys())}) are given in {self.cgf_path}'
