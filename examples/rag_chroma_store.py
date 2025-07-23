@@ -12,21 +12,32 @@
 9. 运行本程序，输入问题，得到回答，回答中必须说明答案来自于哪些文件
 """
 
-# -*- coding: utf-8 -*-
-
 import os
-import lazyllm
-from lazyllm import bind, config
-from lazyllm.tools.rag import DocField, DataType
-import shutil
+from lazyllm import (
+    bind,
+    Document,
+    OnlineEmbeddingModule,
+    Retriever,
+    ChatPrompter,
+    OnlineChatModule,
+    pipeline,
+    ActionModule,
+)
+from lazyllm.tools.rag.global_metadata import RAG_DOC_FILE_NAME
+
+
+def info(msg):
+    print(f"26- logger:{msg}")
+    return msg
 
 
 class TmpDir:
     def __init__(self):
-        self.root_dir = os.path.expanduser(
-            os.path.join("/home/lianghao/github/LazyLLM", ".data")
+        self.root_dir = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", ".data")
         )
-        self.rag_dir = os.path.join(self.root_dir, "rag_master")
+
+        self.rag_dir = os.path.join(self.root_dir, "documents")
         os.makedirs(self.rag_dir, exist_ok=True)
         self.chroma_dir = os.path.join(self.root_dir, "chroma")
 
@@ -41,22 +52,30 @@ chroma_store_conf = {
     },
 }
 
-# 配置文档字段（包含文件名和路径）
-doc_fields = {
-    "filename": DocField(data_type=DataType.VARCHAR, max_size=256, default_value=""),
-    "file_path": DocField(data_type=DataType.VARCHAR, max_size=1024, default_value=""),
-}
+# 定义需要保存哪些meta data
+# doc_fields = {
+#     "filename": DocField(data_type=DataType.VARCHAR, max_size=256, default_value=""),
+# }
 
 # 初始化嵌入模型
-embedding_model = lazyllm.OnlineEmbeddingModule("qwen")
+embedding_model = OnlineEmbeddingModule("qwen")
+
+
+# 排除某些文件和目录
+def exclude_reader(file):
+    return []
+
+
+Document.register_global_reader("**/another/*", exclude_reader)
+
 
 # 初始化文档模块
-documents = lazyllm.Document(
+documents = Document(
     dataset_path=tmp_dir.rag_dir,
     embed=embedding_model,
     manager=False,
     store_conf=chroma_store_conf,
-    doc_fields=doc_fields,
+    # doc_fields=doc_fields,
 )
 
 # 创建Node Group，将文档分割为句子
@@ -64,56 +83,80 @@ documents.create_node_group(
     name="sentences", transform=lambda s: s.split("\n") if s else ""
 )
 
-documents._impl.store.update()
+# documents._impl.store.update()
 
 # 初始化检索器
-retriever = lazyllm.Retriever(
+retriever = Retriever(
     doc=documents,
     group_name="sentences",
-    similarity="cosine",
-    output_format="content",  # 输出格式是字符串，而不是node(chunk)对象
+    similarity="bm25_chinese",
+    # output_format="content",  # 输出格式是字符串，而不是node(chunk)对象
     topk=30,
 )
 
 # 初始化Qwen模型
-chat_model = lazyllm.OnlineChatModule(model="qwen")
+chat_model = OnlineChatModule(model="qwen")
 
 # 构建提示模板
 prompt = (
     "你将扮演一个人工智能问答助手的角色，完成一项对话任务。"
-    "在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。"
+    "在这个任务中，你需要根据给定的上下文以及问题，给出你的回答,请在回答中说明答案来自于哪些文件:\n\n{context_str}\n/no_think"
 )
 
 # 构建LLM模块
-llm = chat_model.prompt(
-    lazyllm.ChatPrompter(instruction=prompt, extra_keys=["context_str"])
-)
 
-with lazyllm.pipeline() as ppl:
+
+llm = chat_model.prompt(ChatPrompter(instruction=prompt))
+
+
+def get_context(nodes):
+    """
+    @examples/rag_chroma_store.py 请阅读<AI_PROMPT> 的指示，然后在其下方开始编程
+    1. 遍历 nodes
+    2. content = node.get_content()
+    3. filename = node.global_metadata.get(RAG_DOC_FILE_NAME, "")
+    4. 按照 filename 分组，将文件名相同的内容组合在一起，格式为  ## {filename} \n {content}
+    5. 组合成一个字符串返回
+    """
+    from collections import defaultdict
+
+    file_content = defaultdict(list)
+
+    # 按文件名分组
+    for node in nodes:
+        filename = node.global_metadata.get(RAG_DOC_FILE_NAME, "")
+        if filename:
+            file_content[filename].append(node.get_content())
+
+    # 组合格式化字符串
+    result = ""
+    for filename, contents in file_content.items():
+        result += f"## {filename} \n{', '.join(contents)}\n\n"
+
+    return result.strip()
+
+
+with pipeline() as ppl:
     # 检索
     ppl.retriever = retriever
 
-    def logger(ret):
-        print(ret)
-        return ret
-
-    ppl.logger = logger
-
-    # 格式化检索结果
+    # 将检索结果（nodes）转换为字符串,context_str是自定义的key，而query是ChatPrompter内置的，代表用户的问题
+    # 最终返回一个字典，喂给llm，而llm用prompt指定了ChatPrompter-自动将这个字典转换为最终的prompt，并返回给llm
     ppl.formatter = (
-        lambda nodes, query: dict(context_str=",".join(nodes), query=query)
+        lambda input, query: dict(
+            context_str=get_context(nodes=input),
+            query=query,
+        )
     ) | bind(query=ppl.input)
+
+    # 打印formatter的输出结果
+    ppl.logger = info
 
     # 生成回答
     ppl.llm = llm
 
 if __name__ == "__main__":
-    try:
-        rag = lazyllm.ActionModule(ppl)
-        rag.start()
-        res = rag("什么是ai agent？")
-        print(f"answer: {res}")
-    finally:
-        # 清理临时目录
-        # shutil.rmtree(tmp_dir.root_dir)
-        pass
+    rag = ActionModule(ppl)
+    rag.start()
+    res = rag("如何用ai制作ppt？")
+    print(f"answer: {res}")
