@@ -13,6 +13,7 @@
 """
 
 import os
+import lazyllm
 from lazyllm import (
     bind,
     Document,
@@ -157,7 +158,7 @@ with pipeline() as ppl:
     ) | bind(query=ppl.input)
 
     # 打印formatter的输出结果
-    ppl.logger = info
+    # ppl.logger = info
 
     # 生成回答
     ppl.llm = llm
@@ -165,5 +166,22 @@ with pipeline() as ppl:
 if __name__ == "__main__":
     rag = ActionModule(ppl)
     rag.start()
-    res = rag("如何用ai制作ppt？")
-    print(f"answer: {res}")
+
+    query = "如何用ai制作ppt？"
+
+    with lazyllm.ThreadPoolExecutor(1) as executor:
+        future = executor.submit(rag, query)
+        buffer = ""
+        while True:
+            if value := lazyllm.FileSystemQueue().dequeue():
+                buffer += "".join(value)
+                # 按句子或段落分割输出
+                if buffer.endswith(("。", "？", "！", "\n", " ")):
+                    print(f"{buffer}")
+                    buffer = ""
+            elif future.done():
+                if buffer:
+                    print(f"{buffer}")
+                break
+        result = future.result()
+        print(f"answer: {result}")
