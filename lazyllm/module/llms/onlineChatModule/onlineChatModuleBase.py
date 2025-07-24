@@ -176,6 +176,11 @@ class OnlineChatModuleBase(ModuleBase):
         try:
             chunk = json.loads(msg)
             message = self._convert_msg_format(chunk)
+
+            # F8080 uniin 返回的response在 message["data"]
+            if "data" in message:
+                message = message["data"]
+
             if stream_output:
                 color = stream_output.get('color') if isinstance(stream_output, dict) else None
                 for item in message.get("choices", []):
@@ -280,6 +285,10 @@ class OnlineChatModuleBase(ModuleBase):
             else:
                 return "".join(ele for ele in src if ele is not None)
         elif all(isinstance(ele, list) for ele in src):
+            # F8080 uniin 最后一条是空数组
+            if len(src[-1]) == 0:
+                src = src[:-1]
+
             assert all(len(src[-1]) == len(ele) for ele in src), f"The lists of elements: {src} have different lengths."
             ret = [self._merge_stream_result([ele[idx] for ele in src]) for idx in range(len(src[-1]))]
             return ret[0] if isinstance(ret[0], list) else ret

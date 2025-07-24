@@ -57,9 +57,18 @@ chroma_store_conf = {
 #     "filename": DocField(data_type=DataType.VARCHAR, max_size=256, default_value=""),
 # }
 
-# 初始化嵌入模型
-embedding_model = OnlineEmbeddingModule("qwen")
+# 嵌入模型
+# embedding_model = OnlineEmbeddingModule("qwen")
+embedding_model = OnlineEmbeddingModule(
+    source="openai",
+    embed_model_name=os.getenv("EMBED_MODEL_NAME"),
+    embed_url=os.getenv("EMBED_URL"),
+    api_key=os.getenv("EMBED_API_KEY"),
+)
 
+# 对话模型
+chat_model = OnlineChatModule(source="uniin", model="qwen3-32b", stream=True)
+# chat_model = OnlineChatModule(source="qwen", stream=True)
 
 # 排除某些文件和目录
 def exclude_reader(file):
@@ -94,8 +103,6 @@ retriever = Retriever(
     topk=30,
 )
 
-# 初始化Qwen模型
-chat_model = OnlineChatModule(model="qwen")
 
 # 构建提示模板
 prompt = (
