@@ -336,6 +336,11 @@ class OnlineChatModuleBase(ModuleBase):
                 data["messages"][idx]["content"] = query_files
 
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
+
+        # F8080 千问3系列: 非流式输出要求 enable_thinking = False
+        if not stream_output and "qwen3" in self._model_name.lower():
+            data["enable_thinking"] = False
+
         with requests.post(self._url, json=data, headers=self._headers, stream=stream_output, proxies=proxies) as r:
             if r.status_code != 200:  # request error
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \

@@ -14,7 +14,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
            be accessed through the Dashscope SDK.
     """
     TRAINABLE_MODEL_LIST = ["qwen-turbo", "qwen-7b-chat", "qwen-72b-chat"]
-    MODEL_NAME = "qwen-plus"
+    MODEL_NAME = "qwen3-32b"
 
     def __init__(self, base_url: str = "https://dashscope.aliyuncs.com/", model: str = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):

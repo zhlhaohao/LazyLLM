@@ -5,11 +5,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "1-deep-research",
+      "name": "01-paper-assistant",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/examples/deep_research.py",
-      "args": [],
+      "module": "examples.paper_assistant.main",
       "env": {
         "PYTHONPATH": "${workspaceFolder}"
       },
@@ -18,7 +17,7 @@
       "justMyCode": false
     },
     {
-      "name": "2-rag-chroma",
+      "name": "02-rag-chroma",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/examples/rag_chroma_store.py",
@@ -31,7 +30,20 @@
       "justMyCode": false
     },
     {
-      "name": "3-rag-online",
+      "name": "03-deep-research",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/deep_research.py",
+      "args": [],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "04-rag-online",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/examples/rag_online.py",
@@ -44,7 +56,7 @@
       "justMyCode": false
     },
     {
-      "name": "5-current file",
+      "name": "05-current file",
       "type": "debugpy",
       "request": "launch",
       "program": "${file}",

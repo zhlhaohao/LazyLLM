@@ -59,13 +59,13 @@ chroma_store_conf = {
 # }
 
 # 嵌入模型
-# embedding_model = OnlineEmbeddingModule("qwen")
-embedding_model = OnlineEmbeddingModule(
-    source="openai",
-    embed_model_name=os.getenv("EMBED_MODEL_NAME"),
-    embed_url=os.getenv("EMBED_URL"),
-    api_key=os.getenv("EMBED_API_KEY"),
-)
+embedding_model = OnlineEmbeddingModule("qwen")
+# embedding_model = OnlineEmbeddingModule(
+#     source="openai",
+#     embed_model_name=os.getenv("EMBED_MODEL_NAME"),
+#     embed_url=os.getenv("EMBED_URL"),
+#     api_key=os.getenv("EMBED_API_KEY"),
+# )
 
 # 对话模型
 chat_model = OnlineChatModule(source="uniin", model="qwen3-32b", stream=True)
