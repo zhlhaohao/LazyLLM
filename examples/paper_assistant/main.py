@@ -9,13 +9,10 @@ from .paper_rag import build_paper_rag
 rag_ppl = build_paper_rag()
 sql_ppl = build_statistical_agent()
 
-def log(input):
-    print("8- input:{input}")
-    return input
 
 # 搭建具备知识问答和统计问答能力的主工作流
 def build_paper_assistant():
-    llm = OnlineChatModule(source='qwen', stream=False)
+    llm = OnlineChatModule(source='uniin', enable_thinking=False)
     intent_list = [
         "论文问答",
         "统计问答",
@@ -33,3 +30,12 @@ def build_paper_assistant():
 if __name__ == "__main__":
     main_ppl = build_paper_assistant()
     lazyllm.WebModule(main_ppl, port=23459, static_paths="./images").start().wait()
+
+"""
+Learning a Universal and Transferable Genera-
+tive Model of Adversarial Suffixes for Jailbreaking Both Open
+and Closed LLMs   --- 这篇论文的主题观点和创新点是什么
+
+统计论文所属的领域，用histogram可视化
+
+"""

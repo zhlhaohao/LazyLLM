@@ -6,9 +6,9 @@ import lazyllm
 
 class TmpDir:
     def __init__(self):
-        self.root_dir = os.path.expanduser("./rag_data/papers")  # os.path.join(lazyllm.config['home'], 'rag_for_qa'))
-        self.rag_dir = os.path.join(self.root_dir, "papers")
-        os.makedirs(self.rag_dir, exist_ok=True)
+        self.root_dir = os.path.expanduser("./.data/paper_assistant")  # os.path.join(lazyllm.config['home'], 'rag_for_qa'))
+        os.makedirs(self.root_dir, exist_ok=True)
+        self.rag_dir = os.path.join("./rag_data", "papers")
         self.store_file = os.path.join(self.root_dir, "milvus.db")
         self.image_path = "./images"
 
@@ -51,11 +51,12 @@ def build_paper_rag():
     with lazyllm.pipeline() as rag_ppl:
         rag_ppl.log = log
 
-        rag_ppl.retriever = lazyllm.Retriever(documents, group_name="CoarseChunk", topk=3)
+        # CoarseChunk: 块大小为 1024，重合长度为 100
+        rag_ppl.retriever = lazyllm.Retriever(documents, group_name="CoarseChunk", topk=30)
 
         rag_ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
                                              model=OnlineEmbeddingModule(type='rerank'),
-                                             topk=1,
+                                             topk=10,
                                              output_format='content',
                                              join=True) | bind(query=rag_ppl.input)
 

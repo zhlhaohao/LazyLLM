@@ -24,7 +24,7 @@ BI_PROMPT = """
 
 3. 实现数据分析和绘图的方式是编写完整可执行的 Python 代码并调用相关工具执行并获取结果
    - 包含所有必要的 import、数据加载、分析逻辑、绘图代码、结果输出。  
-   - 使用常见数据科学工具包（如 pandas、numpy、scikit-learn、plotly 等，禁止使用matplotlib）进行数据分析。  
+   - 使用常见数据科学工具包（如 pandas、numpy、scikit-learn 等）进行数据分析。  
    - 使用可视化工具（如 matplotlib、seaborn）进行图表绘制。
    - 对所有需要查看的结果（如统计分析结果、图片路径等），需显式使用 print 函数输出。
 

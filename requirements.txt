@@ -35,10 +35,7 @@ tenacity
 beautifulsoup4
 chromadb
 pymilvus>=2.4.11, <2.5.0
-matplotlib
 pandas
+matplotlib
 seaborn
-plotly
-kaleido
-logistro
-simplejson
+wikipedia

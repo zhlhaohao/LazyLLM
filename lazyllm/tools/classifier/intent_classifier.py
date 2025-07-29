@@ -117,7 +117,8 @@ class IntentClassifier(ModuleBase):
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
         if llm_chat_history is not None and self._llm._module_id not in globals["chat_history"]:
             globals["chat_history"][self._llm._module_id] = llm_chat_history
-        return self._impl(input)
+        result = self._impl(input)    
+        return result
 
     def __enter__(self):
         assert not self._intent_list, 'Intent list is already set'

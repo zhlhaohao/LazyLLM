@@ -42,6 +42,7 @@ class OnlineChatModuleBase(ModuleBase):
                  vlm_models: List[str] = None,
                  skip_auth: bool = False,
                  static_params: StaticParams = {},
+                 enable_thinking: bool = False,
                  **kwargs):
         super().__init__(return_trace=return_trace)
         self._model_series = model_series
@@ -62,6 +63,9 @@ class OnlineChatModuleBase(ModuleBase):
         self._model_optional_params = {}
         self._vlm_force_format_input_with_files = False
         self._static_params = static_params
+
+        # F8080
+        self._enable_thinking = enable_thinking
 
     @property
     def series(self):
@@ -318,6 +322,10 @@ class OnlineChatModuleBase(ModuleBase):
 
         data["model"] = self._model_name
         data["stream"] = bool(stream_output)
+
+        # F8080
+        data["enable_thinking"] = self._enable_thinking
+
         data.update(self._static_params)
 
         if len(kw) > 0:

@@ -19,7 +19,7 @@ def build_statistical_agent():
         sql_ppl.log = log
 
         sql_ppl.agent = ReactAgent(
-                llm=lazyllm.OnlineChatModule(source='uniin', model="qwen3-235b-a22b", stream=False),
+                llm=lazyllm.OnlineChatModule(source='uniin', model="qwen3-32b", enable_thinking=False),
                 tools=['run_code', 'run_sql_query'],
                 return_trace=True,
                 max_retries=3,
