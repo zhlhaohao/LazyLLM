@@ -1,0 +1,1 @@
+docker compose -f /home/lianghao/github/LazyLLM/docker/docker-compose.yml up -d

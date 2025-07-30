@@ -16,3 +16,4 @@ infer_log/
 .data/
 .env
 .ai/backup
+*.log

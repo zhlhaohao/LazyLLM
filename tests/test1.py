@@ -1,23 +1,43 @@
-import pandas as pd
-import matplotlib.pyplot as plt
+import asyncio
+from crawl4ai import AsyncWebCrawler
+from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig, CacheMode
 
-# 数据
-subjects = ["\nArtificial Intelligence (cs.AI)", "\nArtificial Intelligence (cs.AI); Computation and Language (cs.CL)", "\nArtificial Intelligence (cs.AI); Machine Learning (cs.LG)", "\nArtificial Intelligence (cs.AI); Neurons and Cognition (q-bio.NC)", "\nAudio and Speech Processing (eess.AS); Computation and Language (cs.CL); Machine Learning (cs.LG); Sound (cs.SD)", "\nComputation and Language (cs.CL)", "\nComputation and Language (cs.CL); Artificial Intelligence (cs.AI)", "\nComputation and Language (cs.CL); Artificial Intelligence (cs.AI); Human-Computer Interaction (cs.HC); Machine Learning (cs.LG)", "\nComputation and Language (cs.CL); Artificial Intelligence (cs.AI); Machine Learning (cs.LG)", "\nComputation and Language (cs.CL); Machine Learning (cs.LG)", "\nComputation and Language (cs.CL); Sound (cs.SD); Audio and Speech Processing (eess.AS)", "\nComputer Vision and Pattern Recognition (cs.CV)", "\nComputer Vision and Pattern Recognition (cs.CV); Artificial Intelligence (cs.AI)", "\nComputer Vision and Pattern Recognition (cs.CV); Artificial Intelligence (cs.AI); Graphics (cs.GR); Machine Learning (cs.LG)", "\nComputer Vision and Pattern Recognition (cs.CV); Artificial Intelligence (cs.AI); Human-Computer Interaction (cs.HC); Machine Learning (cs.LG)", "\nComputer Vision and Pattern Recognition (cs.CV); Artificial Intelligence (cs.AI); Robotics (cs.RO)", "\nComputer Vision and Pattern Recognition (cs.CV); Computation and Language (cs.CL)", "\nComputer Vision and Pattern Recognition (cs.CV); Computation and Language (cs.CL); Image and Video Processing (eess.IV)", "\nComputer Vision and Pattern Recognition (cs.CV); Human-Computer Interaction (cs.HC)", "\nComputer Vision and Pattern Recognition (cs.CV); Human-Computer Interaction (cs.HC); Machine Learning (cs.LG)", "\nComputer Vision and Pattern Recognition (cs.CV); Machine Learning (cs.LG)", "\nComputer Vision and Pattern Recognition (cs.CV); Multimedia (cs.MM); Audio and Speech Processing (eess.AS)", "\nCryptography and Security (cs.CR); Artificial Intelligence (cs.AI)", "\nEmerging Technologies (cs.ET); Artificial Intelligence (cs.AI)", "\nImage and Video Processing (eess.IV); Computer Vision and Pattern Recognition (cs.CV)", "\nImage and Video Processing (eess.IV); Computer Vision and Pattern Recognition (cs.CV); Machine Learning (cs.LG)", "\nInformation Retrieval (cs.IR); Artificial Intelligence (cs.AI)", "\nMachine Learning (cs.LG)", "\nMachine Learning (cs.LG); Artificial Intelligence (cs.AI)", "\nMachine Learning (cs.LG); Artificial Intelligence (cs.AI); Computation and Language (cs.CL); Computer Vision and Pattern Recognition (cs.CV); Information Theory (cs.IT)", "\nMachine Learning (cs.LG); Artificial Intelligence (cs.AI); Emerging Technologies (cs.ET)", "\nMachine Learning (cs.LG); Artificial Intelligence (cs.AI); Robotics (cs.RO); Systems and Control (eess.SY); Optimization and Control (math.OC)", "\nMachine Learning (cs.LG); Artificial Intelligence (cs.AI); Signal Processing (eess.SP)", "\nMachine Learning (cs.LG); Computer Vision and Pattern Recognition (cs.CV)", "\nMachine Learning (cs.LG); Computer Vision and Pattern Recognition (cs.CV); Atmospheric and Oceanic Physics (physics.ao-ph)", "\nMachine Learning (cs.LG); Statistics Theory (math.ST); Machine Learning (stat.ML)", "\nMachine Learning (stat.ML); Machine Learning (cs.LG)", "\nMachine Learning (stat.ML); Machine Learning (cs.LG); Methodology (stat.ME)", "\nNetworking and Internet Architecture (cs.NI); Machine Learning (cs.LG)", "\nNetworking and Internet Architecture (cs.NI); Machine Learning (cs.LG); Robotics (cs.RO)", "\nQuantum Physics (quant-ph); Information Theory (cs.IT); Machine Learning (cs.LG)", "\nRisk Management (q-fin.RM); Artificial Intelligence (cs.AI); Computational Engineering, Finance, and Science (cs.CE); Machine Learning (cs.LG); Portfolio Management (q-fin.PM)", "\nRobotics (cs.RO)", "\nRobotics (cs.RO); Systems and Control (eess.SY)", "\nSoftware Engineering (cs.SE); Artificial Intelligence (cs.AI)", "\nSoftware Engineering (cs.SE); Artificial Intelligence (cs.AI); Computation and Language (cs.CL)", "\nSoftware Engineering (cs.SE); Artificial Intelligence (cs.AI); Machine Learning (cs.LG); Performance (cs.PF); Programming Languages (cs.PL)", "\nSoftware Engineering (cs.SE); Hardware Architecture (cs.AR); Cryptography and Security (cs.CR); Machine Learning (cs.LG)", "\nStatistical Finance (q-fin.ST); Machine Learning (cs.LG); Social and Information Networks (cs.SI); General Finance (q-fin.GN)", "\nSystems and Control (eess.SY); Machine Learning (cs.LG); Multiagent Systems (cs.MA)"]
-paper_counts = [1, 1, 2, 1, 1, 5, 3, 1, 3, 3, 1, 25, 4, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 4, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 6, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+async def main():
+    browser_config = BrowserConfig(verbose=True)
+    run_config = CrawlerRunConfig(
+        # Content filtering
+        word_count_threshold=10,
+        excluded_tags=['form', 'header'],
+        exclude_external_links=True,
 
-# 创建DataFrame
-df = pd.DataFrame({"subject": subjects, "paper_count": paper_counts})
+        # Content processing
+        process_iframes=True,
+        remove_overlay_elements=True,
 
-# 绘制直方图
-plt.figure(figsize=(10, 8))
-plt.bar(df["subject"], df["paper_count"])
-plt.xlabel("Subject")
-plt.ylabel("Paper Count")
-plt.title("Histogram of Paper Counts by Subject")
-plt.xticks(rotation=90)
-plt.tight_layout()
+        # Cache control
+        cache_mode=CacheMode.ENABLED  # Use cache if available
+    )
 
-# 保存图像
-image_path = "./images/paper_histogram.png"
-plt.savefig(image_path)
-print(f"图像已保存到 {image_path}")
+    async with AsyncWebCrawler(config=browser_config) as crawler:
+        result = await crawler.arun(
+            url="https://news.qq.com/rain/a/20250729A028VS00",
+            config=run_config
+        )
+
+        if result.success:
+            # Print clean content
+            print("Content:", result.markdown[:500])  # First 500 chars
+
+            # Process images
+            for image in result.media["images"]:
+                print(f"Found image: {image['src']}")
+
+            # Process links
+            for link in result.links["internal"]:
+                print(f"Internal link: {link['href']}")
+
+        else:
+            print(f"Crawl failed: {result.error_message}")
+
+if __name__ == "__main__":
+    asyncio.run(main())

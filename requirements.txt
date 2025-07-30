@@ -39,3 +39,4 @@ pandas
 matplotlib
 seaborn
 wikipedia
+crawl4ai
