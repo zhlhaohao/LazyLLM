@@ -160,17 +160,20 @@ def LLMWorker(input: str):
     return response
 
 
-def build_research_agent():
+def build_web_search_agent():
     with pipeline() as ppl:
         # 将query扩充为任务描述
         ppl.formarter = lambda query: PROMPT_TEMPLATE.format(query=query) 
 
         ppl.agent = ReactAgent(
-                llm=lazyllm.OnlineChatModule(source='uniin', model="qwen3-32b", enable_thinking=False),
+                llm=lazyllm.OnlineChatModule(source='uniin', model="qwen3-32b", enable_thinking=False, stream=False),
                 tools=['WebSearchWorker', 'CrawlPagesWorker', 'LLMWorker'],
                 return_trace=True,
                 max_retries=3,
             )
+        """         
+        这一步的目的是从前面组件的输出中提取最终答案。因为 agent 的回复可能包含中间推理过程或其他多余文本，这个操作确保只提取出最终答案部分（在 `"Answer:"` 之后的内容）。如果没有 `"Answer:"` 标记，则保留原始输出不变。
+        """
         ppl.clean = lazyllm.ifs(lambda x: "Answer:" in x, lambda x: x.split("Answer:")[-1], lambda x:x)
 
     return ppl

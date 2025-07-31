@@ -23,6 +23,23 @@ def extract_relevant_context(query, page_text):
     return result
 
 
+
+
+async def expand_query(query):
+    """
+    将问题生成N个不同的问题
+    """
+    query_count = 3
+    prompter = lazyllm.AlpacaPrompter(f"""You are an expert research assistant. Given the user's query, generate up to {query_count} distinct, precise search queries in chinese that would help gather comprehensive information on the topic.
+    Return only a Python list of strings, for example: ['query1', 'query2', 'query3'].""", extra_keys='query')
+
+    # prompter.generate_prompt(query)
+    result = OnlineChatModule(source="uniin").prompt(prompter)
+
+
+
+
+
 if __name__ == "__main__":
     query = "钱学森事迹"
     page_text = """

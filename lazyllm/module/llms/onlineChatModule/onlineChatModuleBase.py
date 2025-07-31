@@ -18,7 +18,6 @@ from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from lazyllm.components.utils.file_operate import delete_old_files, image_to_base64
 from ...module import ModuleBase, Pipeline
 
-
 class StaticParams(TypedDict, total=False):
     temperature: float
     top_p: float
@@ -279,6 +278,8 @@ class OnlineChatModuleBase(ModuleBase):
 
     def _merge_stream_result(self, src: List[str | int | list | dict]):
         types = set(type(ele) for ele in src if ele is not None)
+        # if not (len(src) > 0 and len(types) <= 1):
+        #     lazyllm.LOG.debug(f"hahahahah:\n{src}")
         assert len(src) > 0 and len(types) <= 1, f"The elements in the list: {src} are of inconsistent types"
         if len(src) == 1:
             return src[0]

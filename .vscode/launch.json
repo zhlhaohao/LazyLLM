@@ -5,10 +5,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "01-web-agent",
+      "name": "01-research-agent",
       "type": "debugpy",
       "request": "launch",
-      "module": "examples.web_agent.main",
+      "module": "examples.web_agent.research",
       "env": {
         "PYTHONPATH": "${workspaceFolder}"
       },
@@ -29,7 +29,19 @@
       "justMyCode": false
     },
     {
-      "name": "03-paper-assistant",
+      "name": "03-web-agent",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "examples.web_agent.main",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "04-paper-assistant",
       "type": "debugpy",
       "request": "launch",
       "module": "examples.paper_assistant.main",
@@ -41,7 +53,7 @@
       "justMyCode": false
     },
     {
-      "name": "04-ReWOO-agent",
+      "name": "05-ReWOO-agent",
       "type": "debugpy",
       "request": "launch",
       "module": "examples.chapter18.ReWOOAgent",
@@ -53,7 +65,7 @@
       "justMyCode": false
     },
     {
-      "name": "05-rag-chroma",
+      "name": "06-rag-chroma",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/examples/rag_chroma_store.py",
@@ -66,7 +78,7 @@
       "justMyCode": false
     },
     {
-      "name": "06-deep-research",
+      "name": "07-deep-research",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/examples/deep_research.py",
@@ -79,7 +91,7 @@
       "justMyCode": false
     },
     {
-      "name": "07-rag-online",
+      "name": "08-rag-online",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/examples/rag_online.py",

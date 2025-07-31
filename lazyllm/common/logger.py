@@ -52,7 +52,8 @@ class _Log:
             self.stderr: bool = bool(stderr)
             self._stderr_i = logger.add(
                 stderr,
-                level=lazyllm.config["log_level"] if not lazyllm.config["debug"] else "DEBUG",
+                # level=lazyllm.config["log_level"] if not lazyllm.config["debug"] else "DEBUG",
+                level=os.getenv("STDERR_LOG_LEVEL") if os.getenv("STDERR_LOG_LEVEL") else "DEBUG",
                 format=lazyllm.config["log_format"], colorize=True,
                 filter=lambda record: (record["extra"].get("name") == self._name and self.stderr))
             _Log._stderr_initialized = True

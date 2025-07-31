@@ -77,7 +77,7 @@ class FunctionCall(ModuleBase):
             self._impl.m4 = self._tool_post_action | bind(input=self._impl.input, llm_output=self._impl.m1)
 
     def _parser(self, llm_output: Union[str, List[Dict[str, Any]]]):
-        LOG.debug(f"llm_output: {llm_output}")
+        # LOG.debug(f"llm_output: {llm_output}")
         if isinstance(llm_output, list):
             res = []
             for item in llm_output:
