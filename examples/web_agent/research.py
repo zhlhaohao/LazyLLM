@@ -3,14 +3,13 @@ import json
 import asyncio
 from .fc_tools import build_web_search_agent
 from lazyllm import pipeline, ActionModule, AlpacaPrompter, ChatPrompter, bind, LOG
+from .prompts import RESEARH_PROMPT
 
 expand_query_prompt = """You are an expert research assistant. Given the user's query, generate up to 2 distinct, precise search queries in chinese that would help gather comprehensive information on the topic.
 Return only a Python list of strings, for example: ["query1", "query2", "query3"].
 query:\n{query}
 """
 
-summary_prompt = """你将扮演一个资深研究人员的角色,你需要根据给定的上下文以及问题，给出你的专业的分析研究报告:\n\ncontext:\n{context_str}\n\nquery:\n{query}"
-"""
 def log(*args):
     print(f"16- log:")
     for i, arg in enumerate(args, 1):
@@ -34,8 +33,11 @@ def build_research_agent():
         ppl.log2 = log
 
         def web_search(query):
-            agent = build_web_search_agent()
-            return agent.start()(query)
+            try:
+                agent = build_web_search_agent()
+                return agent.start()(query)
+            except Exception as e:
+                return "出现错误，无相关新闻资料返回"
 
         ppl.paralle_process = lazyllm.warp(web_search, _concurrent=False)        
         # ppl.log3 = log
@@ -48,7 +50,7 @@ def build_research_agent():
             ) 
         ) | bind(query=ppl.input)
 
-        ppl.summary = lazyllm.OnlineChatModule('uniin', enable_thinking=False).prompt(ChatPrompter(instruction=summary_prompt))
+        ppl.summary = lazyllm.OnlineChatModule('uniin', enable_thinking=False).prompt(ChatPrompter(instruction=RESEARH_PROMPT))
 
     return ppl
 
@@ -58,7 +60,10 @@ if __name__ == '__main__':
     # res = prompter.generate_prompt('如何评价周杰伦')
     # print(res)
 
-    query = "美元与黄金价格的关系是什么？"
+    # query = "俄乌战争截至2025年7月的最新情报，请搜索英语资料"
+    # query = "中国限制稀土供应，美国有什么应对措施，估计多久能够摆脱中国的稀土依赖，请搜索英语资料"
+    # query = "2025年好莱坞新片的评价，请搜索英文资料"
+    query = "台湾基隆潮境公园有哪些餐厅"
     main_ppl = build_research_agent()
     ans = ActionModule(main_ppl).start()(query)
     print(f"最终回答:\n{ans}")

@@ -2,7 +2,7 @@ import lazyllm
 from lazyllm import OnlineChatModule, ActionModule
 from lazyllm import LOG
 
-EXTRACT_PROMPT = """你是一位专业的信息提取专家。根据用户查询从网页内容中提取和摘要出对回答用户查询有帮助的相关信息。只返回相关的上下文作为纯文本，最多{context_length}字，不添加任何评论,如何你发现该网页并不能解答用户的问题，请直接返回: 网页内容无关。
+EXTRACT_PROMPT = """You are a professional information extraction expert. Extract and summarize relevant information from the web page content that helps answer the user's query. Return only the relevant context as plain text, up to {context_length} characters, without adding any comments. If you find that the web page cannot answer the user's question, return: Web content is irrelevant. 
 
 page content:
 {page_text}

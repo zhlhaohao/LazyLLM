@@ -4,7 +4,7 @@ services:
     image: 127.0.0.1:9869/searxng:2025.5.7-f52cd3f00
     restart: unless-stopped
     ports:
-      - 8080:8080
+      - 8088:8080
     volumes:
       - /home/lianghao/github/LazyLLM/docker/searxng:/etc/searxng:rw
     environment:

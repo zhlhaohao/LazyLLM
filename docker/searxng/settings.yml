@@ -2,14 +2,23 @@
 use_default_settings: true
 
 engines:
-  # 启用默认禁用的引擎
   - name: bing
+    engine: bing
     disabled: false
 
   - name: baidu
     engine: baidu
     shortcut: baidu
     disabled: false
+
+  - name: google english
+    engine: google
+    disabled: false
+    proxies:
+      http:
+        - http://192.168.50.150:7890
+      https:
+        - http://192.168.50.150:7890
 
   - name: 360search
     engine: 360search
@@ -33,7 +42,7 @@ engines:
     disabled: true
   - name: duckduckgo
     engine: duckduckgo
-    distabled: true
+    distabled: false
   - name: github
     engine: github
     shortcut: gh
