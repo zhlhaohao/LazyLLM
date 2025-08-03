@@ -1,29 +1,56 @@
 import lazyllm
 from lazyllm import OnlineChatModule, ActionModule
 from lazyllm import LOG
+from datetime import datetime
 
-EXTRACT_PROMPT = """You are a professional information extraction expert. Extract and summarize relevant information from the web page content that helps answer the user's query. Return only the relevant context as plain text, up to {context_length} characters, without adding any comments. If you find that the web page cannot answer the user's question, return: Web content is irrelevant. 
 
-page content:
+EXTRACT_PROMPT = """<CONTEXT>:
 {page_text}
+</CONTEXT>
 
-query:
+
+<INSTRUCTION>
+You are a professional information extraction expert. Extract and summarize relevant information from the web page content that helps answer the user's query. Return only the relevant context as plain text, min {context_length} characters, without adding any comments. 
+
+- Read page text and page url; If you find the date of page is outside the user's queried date range, then return: Web content is irrelevant.
+
+- If you find that the web page cannot answer the user's question, return: Web content is irrelevant. 
+</INSTRUCTION>
+
+
+<CURRENT_DATE>
+{current_date}
+</CURRENT_DATE>
+
+
+<PAGE_URL>
+{page_url}
+</PAGE_URL>
+
+
+<START_OF_USER_QUERY>
 {query}
+<END_OF_USER_QUERY>
+
 """
 
-MAX_CONTEXT_LENGTH = 500
+MAX_CONTEXT_LENGTH = 1000
 
 # 返回网页内容上与问题有关的片段
-def extract_relevant_context(query, page_text):
-    prompt = EXTRACT_PROMPT.format(query=query, page_text=page_text, context_length=MAX_CONTEXT_LENGTH)
+def extract_relevant_context(query, page_text, page_url):
+    prompt = EXTRACT_PROMPT.format(query=query, 
+                                   page_text=page_text, 
+                                   context_length=MAX_CONTEXT_LENGTH, current_date=get_current_date_us_full(), 
+                                   page_url=page_url)
     result = OnlineChatModule(source="uniin")(prompt,llm_chat_history=[])
     # llm.start()
     # result = llm(prompt)
-
+    print(f"{page_url}:\n{result}")
     return result
 
-
-
+def get_current_date_us_full():
+    today = datetime.now()
+    return today.strftime("%B %d, %Y")
 
 async def expand_query(query):
     """

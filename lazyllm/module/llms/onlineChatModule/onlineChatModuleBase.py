@@ -350,11 +350,13 @@ class OnlineChatModuleBase(ModuleBase):
         if not stream_output and "qwen3" in self._model_name.lower():
             data["enable_thinking"] = False
 
+        lazyllm.LOG.debug(f"llm Instruction:\n{data['messages']}")
         with requests.post(self._url, json=data, headers=self._headers, stream=stream_output, proxies=proxies) as r:
             if r.status_code != 200:  # request error
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
                     if stream_output else requests.RequestException(r.text)
 
+            # lazyllm.LOG.debug(f"llm Response:\n{r.text}")
             if isinstance(stream_output, dict):
                 prefix, prefix_color = stream_output.get('prefix', ''), stream_output.get('prefix_color', '')
                 if prefix: FileSystemQueue().enqueue(lazyllm.colored_text(prefix, prefix_color))
@@ -372,6 +374,7 @@ class OnlineChatModuleBase(ModuleBase):
             extractor = self._extract_specified_key_fields(
                 self._merge_stream_result(msg_json)
             )
+
             return self._formatter(extractor) if extractor else ""
 
     def _record_usage(self, usage: dict):

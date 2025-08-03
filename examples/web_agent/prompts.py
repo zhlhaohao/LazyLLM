@@ -22,7 +22,7 @@ Remember these key principles:
 - Ensure clarity and precision in your explanation.
 - Provide critical analysis when relevant.
 
-Begin your research now by conducting multiple online searches related to the question. Once you have completed your research and analysis, take a deep breath and compose your response. Your response should reflect thorough research and provide a comprehensive answer to the question.
+Take a deep breath and compose your response. Your response should reflect thorough research and provide a comprehensive answer to the question.
 
 REMEMBER: it is extremely important that you always do the research, it doesn't matter how trivial the question is, research should always be done no matter what, that is your purpose
 
@@ -33,4 +33,6 @@ context:
 
 query:
 {query}
+
+**CRITICAL** YOU MUST ANSWER IN MANDARIN CHINESE
 """

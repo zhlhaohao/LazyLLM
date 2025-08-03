@@ -12,37 +12,52 @@ from crawl4ai.content_filter_strategy import PruningContentFilter, BM25ContentFi
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from lazyllm.tools.agent import ReactAgent
 from .utils import extract_relevant_context
+from datetime import datetime
 
-search_max_results = 5
+search_max_results = 2
 
 
 PROMPT_TEMPLATE = """
-你是一位资深研究人员和资深记者，需要基于用户给定的问题从网络上收集信息，经过专业的整理、分析和总结，回答用户问题。
-你的工作流程如下：
+你是一位网络爬虫，需要基于用户给定的问题从网络上收集信息。你的工作流程如下：
 
-1. 判断根据问题是否可直接得出答案
-   - 如果用户问题可以直接回答，无需网络查询，则直接输出结果。
-   - 如果不足以回答，则先进行必要的网络查询。
+1. 将用户问题调用搜索工具从网络得到url list。
+2. 对url list调用爬虫工具进行网页爬取，获取详细的资料
 
-2. 进行网络查询
-   - 识别用户想要查询哪个国家的资讯，将用户的问题翻译成该国家的语言。
-   - 将用户问题调用搜索工具从网络得到url list。
-   - 对url list调用爬虫工具进行网页爬取，获取详细的资料，如果资料已经收集完成则可直接回答。
-
-3. 根据用户问题，对网络查询结果进行解析和整理，用简体中文回答。
-
-4. 错误处理
+3. 错误处理
    - 如果出现错误则退出。
 
-
-问题：
+你需要给出所引用的参考资料的page url
+   
+Query：
 {query}
-
 """
+
+# @fc_register("tool")
+# def get_current_date_us_full():
+#     """
+#     Returns the current date in full US format (Month DD, YYYY)
+    
+#     Returns:
+#         str: Current date in Month DD, YYYY format, like "July 04, 2025"
+#     """
+#     today = datetime.now()
+#     return today.strftime("%B %d, %Y")
 
 
 @fc_register("tool")
-def CrawlPagesWorker(page_url_list: List[str], query: str):
+def WebSearchTool(query: str, language: str = "zh-CN", time_range: str = ""):
+    """Worker that search web pages using searxng, input should be a query.
+
+    Args:
+        query (str): user query.    
+        language (str, optional): language of the query". 
+        time_range (str): [year|month|week|day], time range of the search. time_range=year when query contains "this year", time_range=month when query contains "this month", time_range=week when query contains "this week", time_range=day when query contains "today". 
+    """
+    return asyncio.run(searxng_search(query, language, time_range))
+
+
+@fc_register("tool")
+def CrawlPagesTool(page_url_list: List[str], query: str):
     """
     Worker that crawl web page contents. Input should be a list of page url.
 
@@ -51,10 +66,10 @@ def CrawlPagesWorker(page_url_list: List[str], query: str):
         query (str): user query.
 
     """
-    return asyncio.run(crawl_pages(page_url_list, query))
+    return asyncio.run(crawl_many_pages(page_url_list, query))
 
 
-async def crawl_pages(page_url_list: List[str], query: str):
+async def crawl_many_pages(page_url_list: List[str], query: str):
     # crawl4ai爬取url的内容，询问大模型词网页是否有用，有用则返回与用户提问相关的片段
     # 创建信号量限制并发数为3,一个批次启动3个任务
 
@@ -63,16 +78,16 @@ async def crawl_pages(page_url_list: List[str], query: str):
 
         async def process_link_with_sem(link):
             async with semaphore:
-                return await crawl_page(link, query)
+                return await crawl_single_page(link, query)
 
         # 每个批次的任务间隔1秒启动
         async def delayed_task(index, link):
             await asyncio.sleep(index * 1)
             return await process_link_with_sem(link)
 
-        # 创建所有任务批次,开始执行
+        # 创建所有任务批次,开始执行,120不能太短了，因为除了爬虫还有一个提取摘要的过程要花时间
         tasks = [
-            asyncio.wait_for(delayed_task(i, link), timeout=20)
+            asyncio.wait_for(delayed_task(i, link), timeout=120)
             for i, link in enumerate(page_url_list)
         ]
         # 收集结果
@@ -95,7 +110,7 @@ async def crawl_pages(page_url_list: List[str], query: str):
         LOG.error(f"Crawl Pages error: {e}")
         return str(e)
 
-async def crawl_page(page_url: str, query: str):
+async def crawl_single_page(page_url: str, query: str):
     browser_config = BrowserConfig(
         headless=True,  
         verbose=True,
@@ -116,134 +131,15 @@ async def crawl_page(page_url: str, query: str):
             content = result.markdown
             #   LOG.info(f"{content}")
             # 提取网页中与问题相关的片段
-            summary = extract_relevant_context(query, content)
-            return summary
+            summary = extract_relevant_context(query, content, page_url)
+            result = f"### {page_url} content:\n{summary}"
+            return result
     except Exception as e:
-        LOG.error(f"Crawl Single Page error: {e}")
+        LOG.error(f"Crawl Page {page_url} fails: {e}")
         return str(e)  
     
 
-@fc_register("tool")
-def WebSearchWorker(query: str, language: str = "zh-CN"):
-    """Worker that search web pages using searxng, input should be a query.
-
-    Args:
-        query (str): user query.    
-        language (str, optional): language of the query. Defaults to "zh-CN". 
-
-    Extra Info：
-        All language codes list below
-        'af', 'Afrikaans', '', 'Afrikaans'
-        'ar', 'العربية', '', 'Arabic'
-        'ar-SA', 'العربية', 'المملكة العربية السعودية', 'Arabic'
-        'be', 'Беларуская', '', 'Belarusian'
-        'bg', 'Български', '', 'Bulgarian'
-        'bg-BG', 'Български', 'България', 'Bulgarian'
-        'ca', 'Català', '', 'Catalan'
-        'cs', 'Čeština', '', 'Czech'
-        'cs-CZ', 'Čeština', 'Česko', 'Czech'
-        'cy', 'Cymraeg', '', 'Welsh'
-        'da', 'Dansk', '', 'Danish'
-        'da-DK', 'Dansk', 'Danmark', 'Danish'
-        'de', 'Deutsch', '', 'German'
-        'de-AT', 'Deutsch', 'Österreich', 'German'
-        'de-BE', 'Deutsch', 'Belgien', 'German'
-        'de-CH', 'Deutsch', 'Schweiz', 'German'
-        'de-DE', 'Deutsch', 'Deutschland', 'German'
-        'el', 'Ελληνικά', '', 'Greek'
-        'el-GR', 'Ελληνικά', 'Ελλάδα', 'Greek'
-        'en', 'English', '', 'English'
-        'en-AU', 'English', 'Australia', 'English'
-        'en-CA', 'English', 'Canada', 'English'
-        'en-GB', 'English', 'United Kingdom', 'English'
-        'en-IE', 'English', 'Ireland', 'English'
-        'en-IN', 'English', 'India', 'English'
-        'en-NZ', 'English', 'New Zealand', 'English'
-        'en-PH', 'English', 'Philippines', 'English'
-        'en-PK', 'English', 'Pakistan', 'English'
-        'en-SG', 'English', 'Singapore', 'English'
-        'en-US', 'English', 'United States', 'English'
-        'en-ZA', 'English', 'South Africa', 'English'
-        'es', 'Español', '', 'Spanish'
-        'es-AR', 'Español', 'Argentina', 'Spanish'
-        'es-CL', 'Español', 'Chile', 'Spanish'
-        'es-CO', 'Español', 'Colombia', 'Spanish'
-        'es-ES', 'Español', 'España', 'Spanish'
-        'es-MX', 'Español', 'México', 'Spanish'
-        'es-PE', 'Español', 'Perú', 'Spanish'
-        'et', 'Eesti', '', 'Estonian'
-        'et-EE', 'Eesti', 'Eesti', 'Estonian'
-        'eu', 'Euskara', '', 'Basque'
-        'fa', 'فارسی', '', 'Persian'
-        'fi', 'Suomi', '', 'Finnish'
-        'fi-FI', 'Suomi', 'Suomi', 'Finnish'
-        'fr', 'Français', '', 'French'
-        'fr-BE', 'Français', 'Belgique', 'French'
-        'fr-CA', 'Français', 'Canada', 'French'
-        'fr-CH', 'Français', 'Suisse', 'French'
-        'fr-FR', 'Français', 'France', 'French'
-        'ga', 'Gaeilge', '', 'Irish'
-        'gd', 'Gàidhlig', '', 'Scottish Gaelic'
-        'gl', 'Galego', '', 'Galician'
-        'he', 'עברית', '', 'Hebrew'
-        'hi', 'हिन्दी', '', 'Hindi'
-        'hr', 'Hrvatski', '', 'Croatian'
-        'hu', 'Magyar', '', 'Hungarian'
-        'hu-HU', 'Magyar', 'Magyarország', 'Hungarian'
-        'id', 'Indonesia', '', 'Indonesian'
-        'id-ID', 'Indonesia', 'Indonesia', 'Indonesian'
-        'is', 'Íslenska', '', 'Icelandic'
-        'it', 'Italiano', '', 'Italian'
-        'it-CH', 'Italiano', 'Svizzera', 'Italian'
-        'it-IT', 'Italiano', 'Italia', 'Italian'
-        'ja', '日本語', '', 'Japanese'
-        'ja-JP', '日本語', '日本', 'Japanese'
-        'kn', 'ಕನ್ನಡ', '', 'Kannada'
-        'ko', '한국어', '', 'Korean'
-        'ko-KR', '한국어', '대한민국', 'Korean'
-        'lt', 'Lietuvių', '', 'Lithuanian'
-        'lv', 'Latviešu', '', 'Latvian'
-        'ml', 'മലയാളം', '', 'Malayalam'
-        'mr', 'मराठी', '', 'Marathi'
-        'nb', 'Norsk Bokmål', '', 'Norwegian Bokmål'
-        'nb-NO', 'Norsk Bokmål', 'Norge', 'Norwegian Bokmål'
-        'nl', 'Nederlands', '', 'Dutch'
-        'nl-BE', 'Nederlands', 'België', 'Dutch'
-        'nl-NL', 'Nederlands', 'Nederland', 'Dutch'
-        'pl', 'Polski', '', 'Polish'
-        'pl-PL', 'Polski', 'Polska', 'Polish'
-        'pt', 'Português', '', 'Portuguese'
-        'pt-BR', 'Português', 'Brasil', 'Portuguese'
-        'pt-PT', 'Português', 'Portugal', 'Portuguese'
-        'ro', 'Română', '', 'Romanian'
-        'ro-RO', 'Română', 'România', 'Romanian'
-        'ru', 'Русский', '', 'Russian'
-        'ru-RU', 'Русский', 'Россия', 'Russian'
-        'sk', 'Slovenčina', '', 'Slovak'
-        'sl', 'Slovenščina', '', 'Slovenian'
-        'sq', 'Shqip', '', 'Albanian'
-        'sv', 'Svenska', '', 'Swedish'
-        'sv-SE', 'Svenska', 'Sverige', 'Swedish'
-        'ta', 'தமிழ்', '', 'Tamil'
-        'te', 'తెలుగు', '', 'Telugu'
-        'th', 'ไทย', '', 'Thai'
-        'th-TH', 'ไทย', 'ไทย', 'Thai'
-        'tr', 'Türkçe', '', 'Turkish'
-        'tr-TR', 'Türkçe', 'Türkiye', 'Turkish'
-        'uk', 'Українська', '', 'Ukrainian'
-        'ur', 'اردو', '', 'Urdu'
-        'vi', 'Tiếng Việt', '', 'Vietnamese'
-        'vi-VN', 'Tiếng Việt', 'Việt Nam', 'Vietnamese'
-        'zh', '中文', '', 'Chinese'
-        'zh-CN', '中文', '中国', 'Chinese'
-        'zh-HK', '中文', '中國香港特別行政區', 'Chinese'
-        'zh-TW', '中文', '台灣', 'Chinese'
-
-
-    """
-    return asyncio.run(searxng_search(query, language))
-
-async def searxng_search(query: str, language: str):
+async def searxng_search(query: str, language: str, time_range: str):
     # http://127.0.0.1:8080/search?format=json&q=广州天气&language=zh-CN&time_range=&safesearch=0&categories=general
 
     searxng_url = os.getenv("SEARXNG_URL") or "http://127.0.0.1:8088"
@@ -254,7 +150,7 @@ async def searxng_search(query: str, language: str):
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=30)
         ) as session:
-            url = f"{searxng_url}/search?format=json&q={query}&language={language}&time_range=&safesearch=0&categories=general&ban_time_on_fail=5"
+            url = f"{searxng_url}/search?format=json&q={query}&language={language}&time_range={time_range}&safesearch=0&categories=general"
             async with session.get(url ) as response:
                 results = (await response.json())["results"]
                 links = [result["url"] for result in results[: search_max_results]]
@@ -281,7 +177,7 @@ def LLMWorker(input: str):
         LOG.error(f"LLMWorker error: {e}")
 
 def log(msg):
-    print(f"msg:{msg}")
+    print(f"183- msg:\n{msg}")
     return msg
 
 def build_web_search_agent():
@@ -292,14 +188,17 @@ def build_web_search_agent():
         ppl.formarter = lambda query: PROMPT_TEMPLATE.format(query=query) 
 
         ppl.agent = ReactAgent(
-                llm=lazyllm.OnlineChatModule(source='qwen', model="qwen3-32b", enable_thinking=False, stream=False),
-                tools=['WebSearchWorker', 'CrawlPagesWorker', 'LLMWorker'],
+                llm=lazyllm.OnlineChatModule(source='uniin', enable_thinking=False, stream=False),
+                tools=['WebSearchTool', 'CrawlPagesTool'],
                 return_trace=True,
                 max_retries=10,
             )
         """         
         这一步的目的是从前面组件的输出中提取最终答案。因为 agent 的回复可能包含中间推理过程或其他多余文本，这个操作确保只提取出最终答案部分（在 `"Answer:"` 之后的内容）。如果没有 `"Answer:"` 标记，则保留原始输出不变。
         """
+
+        # ppl.log = log
+
         ppl.clean = lazyllm.ifs(lambda x: "Answer:" in x, lambda x: x.split("Answer:")[-1], lambda x:x)
 
     return ppl
