@@ -14,6 +14,9 @@ class UniinModule(OpenAIModule):
         return_trace: bool = False,
         **kwargs,
     ):
+        if os.environ.get("UNIIN_BASE_URL"):
+            base_url = os.environ.get("UNIIN_BASE_URL") + "/openapi/v1/"
+
         # 千问模型在uniin中就算是非流式问答也必须采用流式方式
         if "qwen" in model.lower():
             stream = True
