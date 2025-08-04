@@ -1,57 +1,25 @@
 import asyncio
 import lazyllm
-from lazyllm import fc_register, ReWOOAgent, deploy, pipeline, bind
-from crawl4ai import AsyncWebCrawler
-from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig
+from lazyllm import fc_register, pipeline
 import aiohttp
 import os
 from lazyllm import LOG
 from typing import List
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, RoundRobinProxyStrategy, ProxyConfig
-from crawl4ai.content_filter_strategy import PruningContentFilter, BM25ContentFilter
-from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from lazyllm.tools.agent import ReactAgent
 from .utils import extract_relevant_context
-from datetime import datetime
+import json
+from .prompts import AGENT_PROMPT
 
-search_max_results = 2
-
-
-PROMPT_TEMPLATE = """
-你是一位网络爬虫，需要基于用户给定的问题从网络上收集信息。你的工作流程如下：
-
-1. 将用户问题调用搜索工具从网络得到url list。
-2. 对url list调用爬虫工具进行网页爬取，获取详细的资料
-
-3. 错误处理
-   - 如果出现错误则退出。
-
-你需要给出所引用的参考资料的page url
-   
-Query：
-{query}
-"""
-
-# @fc_register("tool")
-# def get_current_date_us_full():
-#     """
-#     Returns the current date in full US format (Month DD, YYYY)
-    
-#     Returns:
-#         str: Current date in Month DD, YYYY format, like "July 04, 2025"
-#     """
-#     today = datetime.now()
-#     return today.strftime("%B %d, %Y")
-
+search_max_results = int(os.getenv("SEARCH_MAX_RESULTS", "2"))
 
 @fc_register("tool")
 def WebSearchTool(query: str, language: str = "zh-CN", time_range: str = ""):
     """Worker that search web pages using searxng, input should be a query.
 
     Args:
-        query (str): user query.    
-        language (str, optional): language of the query". 
-        time_range (str): [year|month|week|day], time range of the search. time_range=year when query contains "this year", time_range=month when query contains "this month", time_range=week when query contains "this week", time_range=day when query contains "today". 
+        query (str): user query.
+        language (str, optional): language of the query".
+        time_range (str): [year|month|week|day], time range of the search. time_range=year when query contains "this year", time_range=month when query contains "this month", time_range=week when query contains "this week", time_range=day when query contains "today".
     """
     return asyncio.run(searxng_search(query, language, time_range))
 
@@ -110,34 +78,90 @@ async def crawl_many_pages(page_url_list: List[str], query: str):
         LOG.error(f"Crawl Pages error: {e}")
         return str(e)
 
+# async def crawl_single_page_using_craw4ai(page_url: str, query: str):
+#     browser_config = BrowserConfig(
+#         headless=True,
+#         verbose=True,
+#     )
+#     run_config = CrawlerRunConfig(
+#         cache_mode=CacheMode.ENABLED,
+#         markdown_generator=DefaultMarkdownGenerator(
+#             content_filter=PruningContentFilter(threshold=0.48, threshold_type="fixed", min_word_threshold=0)
+#         ),
+#         proxy_config=ProxyConfig(server="http://192.168.50.150:7890")
+#     )
+#     try:
+#         async with AsyncWebCrawler(config=browser_config) as crawler:
+#             result = await crawler.arun(
+#                 url=page_url,
+#                 config=run_config
+#             )
+#             content = result.markdown
+#             #   LOG.info(f"{content}")
+#             # 提取网页中与问题相关的片段
+#             summary = extract_relevant_context(query, content, page_url)
+#             result = f"### {page_url} content:\n{summary}"
+#             return result
+#     except Exception as e:
+#         LOG.error(f"Crawl Page {page_url} fails: {e}")
+#         return str(e)
+
+
 async def crawl_single_page(page_url: str, query: str):
-    browser_config = BrowserConfig(
-        headless=True,  
-        verbose=True,
-    )
-    run_config = CrawlerRunConfig(
-        cache_mode=CacheMode.ENABLED,
-        markdown_generator=DefaultMarkdownGenerator(
-            content_filter=PruningContentFilter(threshold=0.48, threshold_type="fixed", min_word_threshold=0)
-        ),
-        proxy_config=ProxyConfig(server="http://192.168.50.150:7890")
-    )
+    """Firecrawl爬取网页的内容
+
+curl -X POST http://10.119.101.21:9860/v1/scrape \
+    -H 'Content-Type: application/json' \
+    -d '{
+      "url": "https://www.zaobao.com/news/china/story20250513-6328924",
+      "onlyMainContent": true,
+      "formats" : ["markdown"]
+    }'
+
+    Args:
+        url (_type_): url
+
+    Returns:
+        _type_: _description_
+    """
+    firecrawl_url = os.getenv("FIRECRAWL_URL", "")
+
+    full_url = f"{firecrawl_url}v1/scrape"
+
+    headers = {
+        "Content-Type": "application/json",
+    }
+    param = {
+        "url": page_url,
+        "formats": ["markdown"],
+        "onlyMainContent": True,
+        "waitFor": 2000,
+        "timeout": 30000,
+    }
+
     try:
-        async with AsyncWebCrawler(config=browser_config) as crawler:
-            result = await crawler.arun(
-                url=page_url,
-                config=run_config
-            )
-            content = result.markdown
-            #   LOG.info(f"{content}")
-            # 提取网页中与问题相关的片段
-            summary = extract_relevant_context(query, content, page_url)
-            result = f"### {page_url} content:\n{summary}"
-            return result
+        LOG.info(f"开始爬取{page_url}")
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.post(full_url, json=param, timeout=30) as resp:
+                LOG.info(f"爬取结束{page_url}")
+                if resp.status == 200:
+                    resp = await resp.text()
+                    result = json.loads(resp)
+                    content = result.get("data").get("markdown")
+                    # 提取网页中与问题相关的片段
+                    summary = extract_relevant_context(query, content, page_url)
+                    result = f"### {page_url} content:\n{summary}"
+                    return result
+                else:
+                    text = await resp.text()
+                    LOG.info(
+                        f"207- Firecrawl爬取 {page_url} 失败: {resp.status} - {text}"
+                    )
+                    return None
     except Exception as e:
-        LOG.error(f"Crawl Page {page_url} fails: {e}")
-        return str(e)  
-    
+        LOG.error(f"210-Error fetching webpage text with Firecrawl:{e}")
+        return None
+
 
 async def searxng_search(query: str, language: str, time_range: str):
     # http://127.0.0.1:8080/search?format=json&q=广州天气&language=zh-CN&time_range=&safesearch=0&categories=general
@@ -185,20 +209,19 @@ def build_web_search_agent():
         # ppl.log = log
 
         # 将query扩充为任务描述
-        ppl.formarter = lambda query: PROMPT_TEMPLATE.format(query=query) 
+        ppl.formarter = lambda query: AGENT_PROMPT.format(query=query)
 
         ppl.agent = ReactAgent(
-                llm=lazyllm.OnlineChatModule(source='uniin', enable_thinking=False, stream=False),
-                tools=['WebSearchTool', 'CrawlPagesTool'],
-                return_trace=True,
-                max_retries=10,
-            )
-        """         
-        这一步的目的是从前面组件的输出中提取最终答案。因为 agent 的回复可能包含中间推理过程或其他多余文本，这个操作确保只提取出最终答案部分（在 `"Answer:"` 之后的内容）。如果没有 `"Answer:"` 标记，则保留原始输出不变。
-        """
-
+            llm=lazyllm.OnlineChatModule(
+                source="uniin", enable_thinking=False, stream=False
+            ),
+            tools=["WebSearchTool", "CrawlPagesTool"],
+            return_trace=True,
+            max_retries=10,
+        )
         # ppl.log = log
 
+        # 这一步的目的是从前面组件的输出中提取最终答案。因为 agent 的回复可能包含中间推理过程或其他多余文本，这个操作确保只提取出最终答案部分（在 `"Answer:"` 之后的内容）。如果没有 `"Answer:"` 标记，则保留原始输出不变。
         ppl.clean = lazyllm.ifs(lambda x: "Answer:" in x, lambda x: x.split("Answer:")[-1], lambda x:x)
 
     return ppl

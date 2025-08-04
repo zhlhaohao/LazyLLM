@@ -36,3 +36,67 @@ query:
 
 **CRITICAL** YOU MUST ANSWER IN MANDARIN CHINESE
 """
+
+
+AGENT_PROMPT = """
+你是一位网络爬虫，需要基于用户给定的问题从网络上收集信息。你的工作流程如下：
+
+1. 将用户问题调用搜索工具从网络得到url list。
+2. 对url list调用爬虫工具进行网页爬取，获取详细的资料
+
+3. 错误处理
+   - 如果出现错误则退出。
+
+你需要给出所引用的参考资料的page url
+
+Query：
+{query}
+"""
+
+
+EXPAND_QUERY_PROMPT = """You are an expert research assistant. Given the user's query, generate up to {expand_query_count} distinct, precise search queries that would help gather comprehensive information on the topic. If the user requests a specific language, please include it in the response, defaulting to zh-CN.
+CRITICAL: You must answer in this JSON format
+
+EXAMPLE JSON OUTPUT:
+{{
+    "queries": [
+        "query1",
+        "query2"
+    ],
+    "language": "en"
+}}
+
+
+query:\n{query}
+"""
+
+
+EXTRACT_PROMPT = """<CONTEXT>:
+{page_text}
+</CONTEXT>
+
+
+<INSTRUCTION>
+You are a professional information extraction expert. Extract and summarize relevant information from the web page content that helps answer the user's query. Return only the relevant context as plain text in the language of the page content, min {context_length} characters, without adding any comments.
+
+- Read page text and page url; If you find the date of page is outside the user's queried date range, then return: Web content is irrelevant.
+
+- If you find that the web page cannot answer the user's question, return: Web content is irrelevant.
+</INSTRUCTION>
+
+
+<CURRENT_DATE>
+{current_date}
+</CURRENT_DATE>
+
+
+<PAGE_URL>
+{page_url}
+</PAGE_URL>
+
+
+<START_OF_USER_QUERY>
+{query}
+<END_OF_USER_QUERY>
+
+"""
