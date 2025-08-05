@@ -4,10 +4,12 @@ from .fc_tools import build_web_search_agent
 from lazyllm import pipeline, ActionModule, ChatPrompter, bind, LOG
 from .prompts import RESEARH_PROMPT, EXPAND_QUERY_PROMPT
 import os
-
+from typing import Annotated, List
+from fastmcp import Context
+from pydantic import Field
 
 def log(*args):
-    print("16- log:")
+    LOG.info("16- log:")
     for i, arg in enumerate(args, 1):
         print(f"  arg{i}: {arg}")
     return args if len(args) > 1 else args[0] if args else None
@@ -71,6 +73,34 @@ def build_research_agent():
 
     return ppl
 
+async def web_research(
+    query: Annotated[str, Field(description="user's query, do not change")],
+    ctx: Context,
+) -> str:
+    """
+    search web and summarize to answer user query
+    """
+    main_ppl = build_research_agent()
+    with lazyllm.ThreadPoolExecutor(1) as executor:
+        future = executor.submit(main_ppl, query)
+        buffer = ""
+        while True:
+            if value := lazyllm.FileSystemQueue().dequeue():
+                buffer += "".join(value)
+                await ctx.sample("log:" + buffer)
+            elif (
+                value := lazyllm.FileSystemQueue().get_instance("lazy_trace").dequeue()
+            ):
+                LOG.info(f"\n\n中间跟踪:\n{''.join(value)}")
+            elif future.done():
+                break
+
+        answer = future.result()
+        LOG.info(f"\n\n最终回答:\n{answer}")
+        # await ctx.sample(answer)
+        return answer
+    return "失败"
+
 
 if __name__ == "__main__":
     # prompter = AlpacaPrompter(instruction=expand_query_prompt)
@@ -84,5 +114,21 @@ if __name__ == "__main__":
     query = "请分析芬太尼的化学结构，与吗啡 杜冷丁进行比较"
     # query = "请提供俄罗斯人对中国人的看法，用俄语"
     main_ppl = build_research_agent()
-    ans = ActionModule(main_ppl).start()(query)
-    print(f"最终回答:\n{ans}")
+
+    # ans = ActionModule(main_ppl).start()(query)
+    # print(f"最终回答:\n{ans}")
+
+    with lazyllm.ThreadPoolExecutor(1) as executor:
+        future = executor.submit(main_ppl, query)
+        buffer = ""
+        while True:
+            if value := lazyllm.FileSystemQueue().dequeue():
+                buffer += "".join(value)
+                print(f"\n\n流式输出:\n{buffer}")
+            elif (
+                value := lazyllm.FileSystemQueue().get_instance("lazy_trace").dequeue()
+            ):
+                print(f"\n\n中间跟踪:\n{''.join(value)}")
+            elif future.done():
+                break
+        print(f"\n\n最终回答:\n{future.result()}")

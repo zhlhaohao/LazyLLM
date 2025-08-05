@@ -20,7 +20,11 @@ class Config(object):
         self.impl, self.cfgs = dict(), dict()
         self.add('home', str, os.path.expanduser(home), 'HOME')
         os.makedirs(home, exist_ok=True)
-        self.cgf_path = os.path.join(self['home'], 'config.json')
+
+        # F8080
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.cgf_path = os.path.join(current_dir, "..", "configs", "config.json")
+
         if os.path.exists(self.cgf_path):
             with open(self.cgf_path, 'r+') as f:
                 self.cfgs = Config.get_config(json.load(f))

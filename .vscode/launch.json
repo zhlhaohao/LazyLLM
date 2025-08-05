@@ -5,10 +5,22 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "01-research-agent",
+      "name": "01-web-research-server",
       "type": "debugpy",
       "request": "launch",
-      "module": "examples.web_agent.research",
+      "program": "${workspaceFolder}/mcps/run_web_research.py",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "02-mcp-test",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tests/mcp_test.py",
       "env": {
         "PYTHONPATH": "${workspaceFolder}"
       },

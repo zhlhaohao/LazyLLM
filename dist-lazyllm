@@ -1,0 +1,8 @@
+echo -n '请输入版本号:'
+read img_ver
+
+echo -n '是否构建镜像 (y/n)'
+read flag
+if [ "$flag" = "y" -o "$flag" = "Y" ] ; then
+  docker build --progress=plain --build-arg NEED_MIRROR=0 --build-arg "HTTP_PROXY=http://10.119.80.110:17890/" --build-arg "HTTPS_PROXY=http://10.119.80.110:17890/" -f /home/lianghao/github/LazyLLM/Dockerfile -t lazyllm:$img_ver /home/lianghao/github/LazyLLM
+fi

@@ -1,6 +1,6 @@
 import asyncio
 import lazyllm
-from lazyllm import fc_register, pipeline
+from lazyllm import fc_register, pipeline, ModuleBase
 import aiohttp
 import os
 from lazyllm import LOG
@@ -12,6 +12,36 @@ from .prompts import AGENT_PROMPT
 
 search_max_results = int(os.getenv("SEARCH_MAX_RESULTS", "2"))
 
+class SearxngSearch(ModuleBase):
+    # http://127.0.0.1:8080/search?format=json&q=广州天气&language=zh-CN&time_range=&safesearch=0&categories=general
+    def __init__(self, return_trace: bool = False):
+        super().__init__(return_trace=return_trace)
+
+    def forward(self, query: str, language: str, time_range: str):
+        async def worker(query: str, language: str, time_range: str):
+            searxng_url = os.getenv("SEARXNG_URL") or "http://127.0.0.1:8088"
+            global search_max_results
+
+            links = []
+            try:
+                async with aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as session:
+                    url = f"{searxng_url}/search?format=json&q={query}&language={language}&time_range={time_range}&safesearch=0&categories=general"
+                    async with session.get(url) as response:
+                        results = (await response.json())["results"]
+                        links = [
+                            result["url"] for result in results[:search_max_results]
+                        ]
+                        LOG.info(f"searxng_search results:{results}")
+            except Exception as e:
+                LOG.error(f"Web search error: {e}")
+
+            return links
+
+        return asyncio.run(worker(query, language, time_range))
+
+
 @fc_register("tool")
 def WebSearchTool(query: str, language: str = "zh-CN", time_range: str = ""):
     """Worker that search web pages using searxng, input should be a query.
@@ -21,7 +51,7 @@ def WebSearchTool(query: str, language: str = "zh-CN", time_range: str = ""):
         language (str, optional): language of the query".
         time_range (str): [year|month|week|day], time range of the search. time_range=year when query contains "this year", time_range=month when query contains "this month", time_range=week when query contains "this week", time_range=day when query contains "today".
     """
-    return asyncio.run(searxng_search(query, language, time_range))
+    return SearxngSearch(return_trace=True)(query, language, time_range)
 
 
 @fc_register("tool")
@@ -163,26 +193,6 @@ curl -X POST http://10.119.101.21:9860/v1/scrape \
         return None
 
 
-async def searxng_search(query: str, language: str, time_range: str):
-    # http://127.0.0.1:8080/search?format=json&q=广州天气&language=zh-CN&time_range=&safesearch=0&categories=general
-
-    searxng_url = os.getenv("SEARXNG_URL") or "http://127.0.0.1:8088"
-    global search_max_results
-
-    links = []
-    try:
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=30)
-        ) as session:
-            url = f"{searxng_url}/search?format=json&q={query}&language={language}&time_range={time_range}&safesearch=0&categories=general"
-            async with session.get(url ) as response:
-                results = (await response.json())["results"]
-                links = [result["url"] for result in results[: search_max_results]]
-                LOG.info(f"searxng_search results:{results}")
-    except Exception as e:
-        LOG.error(f"Web search error: {e}")
-
-    return links
 
 @fc_register("tool")
 def LLMWorker(input: str):

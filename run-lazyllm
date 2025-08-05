@@ -1,0 +1,11 @@
+#!/bin/bash
+
+docker stop lazyllm
+docker rm lazyllm
+
+docker run -itd --name lazyllm --restart=always \
+    -v /home/lianghao/github:/github \
+    -p 10001:10001 \
+    --env-file .env \
+    lazyllm:250805-1
+

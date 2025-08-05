@@ -21,7 +21,7 @@ os.environ['no_proxy'] = ','.join(list(no_proxies))
 
 def request(method, url, **kwargs):
     with requests.sessions.Session() as session:
-        if os.environ.get('http_proxy') and _is_ip_address_url(url):
+        if os.environ.get("SYSTEM_PROXY") and _is_ip_address_url(url):
             try:
                 session.trust_env = False
                 return session.request(method=method, url=url, **kwargs)
@@ -48,7 +48,7 @@ requests.put, requests.patch, requests.delete, requests.head = _put, _patch, _de
 _old_httpx_func = httpx.request
 
 def new_httpx_func(method, url, **kwargs):
-    if os.environ.get('http_proxy') and _is_ip_address_url(url):
+    if os.environ.get("SYSTEM_PROXY") and _is_ip_address_url(url):
         try:
             return _old_httpx_func(method, url, **{**kwargs, **dict(trust_env=False)})
         except Exception: pass
@@ -61,7 +61,7 @@ def patch_httpx_func(fname):
     _old_func = getattr(httpx, fname)
 
     def new_func(url, **kwargs):
-        if os.environ.get('http_proxy') and _is_ip_address_url(url):
+        if os.environ.get("SYSTEM_PROXY") and _is_ip_address_url(url):
             try:
                 return _old_func(url, **{**kwargs, **dict(trust_env=False)})
             except Exception: pass

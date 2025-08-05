@@ -1,0 +1,5 @@
+[mcpServers.TestServer]
+desc = "LazyLLM MCP Server"
+url = "http://127.0.0.1:10001/mcp-server"
+transport = "streamable-http"
+

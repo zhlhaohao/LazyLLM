@@ -1,0 +1,10 @@
+{
+  "max_embedding_workers": 3,
+  "log_name": "lazyllm",
+  "log_level": "DEBUG",
+  "log_dir": "~/logs",
+  "log_file_mode": "merge",
+  "log_file_level": "DEBUG",
+  "log_file_size": "10 MB",
+  "log_file_retention": "7 days"
+}
