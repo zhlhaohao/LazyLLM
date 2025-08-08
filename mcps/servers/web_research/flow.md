@@ -69,7 +69,7 @@ Answer: your answer here (In the same language as the user's question)
 
 Below is the current conversation consisting of interleaving human and assistant messages. Think step by step.
 
-"}, 
+"},
 
 {'role': 'user', 'content': '
 你是一位网络爬虫，需要基于用户给定的问题从网络上收集信息。你的工作流程如下：
@@ -81,7 +81,7 @@ Below is the current conversation consisting of interleaving human and assistant
    - 如果出现错误则退出。
 
 你需要给出所引用的参考资料的page url
-   
+
 Query：
 {"query": "美元利息与黄金价格走势的关系", "language": "zh-CN"}
 '}]
@@ -113,7 +113,7 @@ tool_calls = [{'id': 'call_f34fbf31f84d4184bbcbfa', 'type': 'function', 'functio
    - 如果出现错误则退出。
 
 你需要给出所引用的参考资料的page url
-   
+
 Query：
 {"query": "美元利息与黄金价格走势的关系", "language": "zh-CN"}
 ', {'role': 'assistant', 'content': '', 'tool_calls': [{'function': {'name': 'WebSearchTool', 'arguments': '{"language": "zh-CN", "query": "美元利息与黄金价格走势的关系"}'}, 'id': 'call_7cd04db9d5b24ec5b2daf2', 'type': 'function'}]}, [{'role': 'tool', 'content': '["https://www.hsbc.com.hk/content/dam/hsbc/en/docs/wealth-insights/fx-insights/fx-viewpoint/fx-viewpoint-19-april-2024-sc.pdf", "https://www.ya37.com/tzwd/3920.html"]', 'tool_call_id': 'call_7cd04db9d5b24ec5b2daf2', 'name': 'WebSearchTool'}]]
@@ -148,7 +148,7 @@ Answer: your answer here (In the same language as the user's question)
 ## Current Conversation
 
 Below is the current conversation consisting of interleaving human and assistant messages. Think step by step.
-"}, 
+"},
 
 {'role': 'user', 'content': '
 你是一位网络爬虫，需要基于用户给定的问题从网络上收集信息。你的工作流程如下：
@@ -160,12 +160,12 @@ Below is the current conversation consisting of interleaving human and assistant
    - 如果出现错误则退出。
 
 你需要给出所引用的参考资料的page url
-   
+
 Query：
 {"query": "美元利息与黄金价格走势的关系", "language": "zh-CN"}
-'}, 
+'},
 
-{'role': 'assistant', 'content': '', 'tool_calls': [{'function': {'name': 'WebSearchTool', 'arguments': '{"language": "zh-CN", "query": "美元利息与黄金价格走势的关系"}'}, 'id': 'call_7cd04db9d5b24ec5b2daf2', 'type': 'function'}]}, 
+{'role': 'assistant', 'content': '', 'tool_calls': [{'function': {'name': 'WebSearchTool', 'arguments': '{"language": "zh-CN", "query": "美元利息与黄金价格走势的关系"}'}, 'id': 'call_7cd04db9d5b24ec5b2daf2', 'type': 'function'}]},
 
 {'role': 'tool', 'content': '["https://www.hsbc.com.hk/content/dam/hsbc/en/docs/wealth-insights/fx-insights/fx-viewpoint/fx-viewpoint-19-april-2024-sc.pdf", "https://www.ya37.com/tzwd/3920.html"]', 'tool_call_id': 'call_7cd04db9d5b24ec5b2daf2', 'name': 'WebSearchTool'}
 
@@ -216,7 +216,7 @@ Answer: your answer here (In the same language as the user's question)
 
 Below is the current conversation consisting of interleaving human and assistant messages. Think step by step.
 
-"}, 
+"},
 
 {'role': 'user', 'content': '
 你是一位网络爬虫，需要基于用户给定的问题从网络上收集信息。你的工作流程如下：
@@ -228,14 +228,23 @@ Below is the current conversation consisting of interleaving human and assistant
    - 如果出现错误则退出。
 
 你需要给出所引用的参考资料的page url
-   
+
 Query：
 {"query": "美元利息与黄金价格走势的关系", "language": "zh-CN"}
-'}, 
+'},
 
-{'role': 'assistant', 'content': '', 'tool_calls': [{'function': {'name': 'WebSearchTool', 'arguments': '{"language": "zh-CN", "query": "美元利息与黄金价格走势的关系"}'}, 'id': 'call_7cd04db9d5b24ec5b2daf2', 'type': 'function'}]}, 
 
-{'role': 'tool', 'content': '["https://www.hsbc.com.hk/content/dam/hsbc/en/docs/wealth-insights/fx-insights/fx-viewpoint/fx-viewpoint-19-april-2024-sc.pdf", "https://www.ya37.com/tzwd/3920.html"]', 'tool_call_id': 'call_7cd04db9d5b24ec5b2daf2', 'name': 'WebSearchTool'}, {'role': 'assistant', 'content': '', 'tool_calls': [{'function': {'name': 'CrawlPagesTool', 'arguments': '{"page_url_list": ["https://www.hsbc.com.hk/content/dam/hsbc/en/docs/wealth-insights/fx-insights/fx-viewpoint/fx-viewpoint-19-april-2024-sc.pdf", "https://www.ya37.com/tzwd/3920.html"], "query": "美元利息与黄金价格走势的关系"}'}, 'id': 'call_a812038d65224df99139e2', 'type': 'function'}]}, 
+
+
+
+
+{'role': 'assistant', 'content': '', 'tool_calls': [{'function': {'name': 'WebSearchTool', 'arguments': '{"language": "zh-CN", "query": "美元利息与黄金价格走势的关系"}'}, 'id': 'call_7cd04db9d5b24ec5b2daf2', 'type': 'function'}]},
+
+
+
+
+
+{'role': 'tool', 'content': '["https://www.hsbc.com.hk/content/dam/hsbc/en/docs/wealth-insights/fx-insights/fx-viewpoint/fx-viewpoint-19-april-2024-sc.pdf", "https://www.ya37.com/tzwd/3920.html"]', 'tool_call_id': 'call_7cd04db9d5b24ec5b2daf2', 'name': 'WebSearchTool'}, {'role': 'assistant', 'content': '', 'tool_calls': [{'function': {'name': 'CrawlPagesTool', 'arguments': '{"page_url_list": ["https://www.hsbc.com.hk/content/dam/hsbc/en/docs/wealth-insights/fx-insights/fx-viewpoint/fx-viewpoint-19-april-2024-sc.pdf", "https://www.ya37.com/tzwd/3920.html"], "query": "美元利息与黄金价格走势的关系"}'}, 'id': 'call_a812038d65224df99139e2', 'type': 'function'}]},
 
 {'role': 'tool', 'content': '### https://www.hsbc.com.hk/content/dam/hsbc/en/docs/wealth-insights/fx-insights/fx-viewpoint/fx-viewpoint-19-april-2024-sc.pdf content:
 Web content is irrelevant.', 'tool_call_id': 'call_a812038d65224df99139e2', 'name': 'CrawlPagesTool'}

@@ -8,7 +8,7 @@ class UniinModule(OpenAIModule):
     def __init__(
         self,
         base_url: str = "https://openai.uniin.cn/openapi/v1/",
-        model: str = "qwen3-32b",
+        model: str = "Qwen3-235B-A22B-Private",
         api_key: str = None,
         stream: bool = True,
         return_trace: bool = False,

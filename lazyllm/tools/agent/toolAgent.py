@@ -39,7 +39,21 @@ WITH_TOKEN_PROMPT = """{tool_start_token}tool name (one of {tool_names}) if usin
 WITHOUT_TOKEN_PROMPT = """Answering questions should include Thought regardless of whether or not you need to \
 call a tool.(Thought is required, tool_calls is optional.)"""
 
-class ReactAgent(ModuleBase):
+def get_last_element(obj):
+    # 递归获取list最后一个元素，直到得到一个dict
+    if isinstance(obj, list):
+        if len(obj) > 0:
+            return get_last_element(obj[-1])
+        else:
+            return obj  # 空列表返回自身
+    elif isinstance(obj, dict):
+        # 如果已经是字典，直接返回
+        return obj
+    else:
+        # 其他类型（字符串、数字等），直接返回
+        return obj
+
+class ToolAgent(ModuleBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False,
                  prompt: str = None, stream: bool = False):
         super().__init__(return_trace=return_trace)
@@ -50,12 +64,34 @@ class ReactAgent(ModuleBase):
             prompt = INSTRUCTION.replace("{TOKENIZED_PROMPT}", WITHOUT_TOKEN_PROMPT if isinstance(llm, OnlineChatModule)
                                          else WITH_TOKEN_PROMPT)
             prompt = prompt.replace("{tool_names}", json.dumps([t.__name__ if callable(t) else t for t in tools],
+
                                                                ensure_ascii=False))
+        def is_final_answer(input):
+            """
+            根据关键字判断输入是否为最终答案,提前终止循环
+            """
+            final_element = get_last_element(input)
+            if isinstance(final_element, str):
+                return True
+            if isinstance(final_element, dict):
+                return final_element.get("content","").startswith("<FINAL_ANSWER>")
+            return False
 
         self._agent = loop(FunctionCall(llm, tools, _prompt=prompt, return_trace=return_trace, stream=stream),
-                           stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+                           stop_condition=is_final_answer, count=self._max_retries)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
         ret = self._agent(query, llm_chat_history) if llm_chat_history is not None else self._agent(query)
-        return ret if isinstance(ret, str) else (_ for _ in ()).throw(ValueError(f"After retrying \
-            {self._max_retries} times, the function call agent still failes to call successfully."))
+
+        # llm回答
+        if isinstance(ret, str):
+            return ret
+        # 提取最后一个tool的结果并返回
+        elif isinstance(ret, list):
+            final_element = get_last_element(ret)
+            content = final_element.get("content", "").replace("<FINAL_ANSWER>", "")
+            return content
+        else:
+            # 其他情况下抛出异常
+            return (_ for _ in ()).throw(ValueError(f"After retrying \
+                {self._max_retries} times, the function call agent still failes to call successfully."))

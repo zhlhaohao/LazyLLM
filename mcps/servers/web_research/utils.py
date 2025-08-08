@@ -16,10 +16,10 @@ def extract_relevant_context(query, page_text, page_url):
         current_date=get_current_date_us_full(),
         page_url=page_url,
     )
-    result = OnlineChatModule(source="uniin")(prompt, llm_chat_history=[])
+    result = OnlineChatModule(source="qwen")(prompt, llm_chat_history=[])
     # llm.start()
     # result = llm(prompt)
-    print(f"{page_url}:\n{result}")
+    # print(f"{page_url}:\n{result}")
     return result
 
 

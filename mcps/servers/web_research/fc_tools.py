@@ -5,42 +5,12 @@ import aiohttp
 import os
 from lazyllm import LOG
 from typing import List
-from lazyllm.tools.agent import ReactAgent
+from lazyllm.tools.agent import ToolAgent
 from .utils import extract_relevant_context
 import json
 from .prompts import AGENT_PROMPT
 
 search_max_results = int(os.getenv("SEARCH_MAX_RESULTS", "2"))
-
-class SearxngSearch(ModuleBase):
-    # http://127.0.0.1:8080/search?format=json&q=广州天气&language=zh-CN&time_range=&safesearch=0&categories=general
-    def __init__(self, return_trace: bool = False):
-        super().__init__(return_trace=return_trace)
-
-    def forward(self, query: str, language: str, time_range: str):
-        async def worker(query: str, language: str, time_range: str):
-            searxng_url = os.getenv("SEARXNG_URL") or "http://127.0.0.1:8088"
-            global search_max_results
-
-            links = []
-            try:
-                async with aiohttp.ClientSession(
-                    timeout=aiohttp.ClientTimeout(total=30)
-                ) as session:
-                    url = f"{searxng_url}/search?format=json&q={query}&language={language}&time_range={time_range}&safesearch=0&categories=general"
-                    async with session.get(url) as response:
-                        results = (await response.json())["results"]
-                        links = [
-                            result["url"] for result in results[:search_max_results]
-                        ]
-                        LOG.info(f"searxng_search results:{results}")
-            except Exception as e:
-                LOG.error(f"Web search error: {e}")
-
-            return links
-
-        return asyncio.run(worker(query, language, time_range))
-
 
 @fc_register("tool")
 def WebSearchTool(query: str, language: str = "zh-CN", time_range: str = ""):
@@ -51,62 +21,111 @@ def WebSearchTool(query: str, language: str = "zh-CN", time_range: str = ""):
         language (str, optional): language of the query".
         time_range (str): [year|month|week|day], time range of the search. time_range=year when query contains "this year", time_range=month when query contains "this month", time_range=week when query contains "this week", time_range=day when query contains "today".
     """
-    return SearxngSearch(return_trace=True)(query, language, time_range)
+
+    async def worker(query: str, language: str, time_range: str):
+        searxng_url = os.getenv("SEARXNG_URL") or "http://127.0.0.1:8088"
+        global search_max_results
+
+        links = []
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as session:
+                url = f"{searxng_url}/search?format=json&q={query}&language={language}&time_range={time_range}&safesearch=0&categories=general"
+                async with session.get(url) as response:
+                    results = (await response.json())["results"]
+                    links = [result["url"] for result in results[:search_max_results]]
+                    LOG.debug(f"searxng_search results:{results}")
+        except Exception as e:
+            LOG.error(f"Web search error: {e}")
+
+        return links
+
+    return asyncio.run(worker(query, language, time_range))
+
+
+class CrawlPages(ModuleBase):
+    """
+    主要是为了测试reture_trace=True的情况，在作为工具被调用的情况下，由于线程id，无法实现在主程序中被捕获,还需要继续研究源码
+    """
+
+    def __init__(self, return_trace: bool = False):
+        super().__init__(return_trace=return_trace)
+
+    def forward(self, page_url_list: List[str], original_query: str):
+        # print(f"\n\n66- original_query:\n\n{original_query}")
+        result = asyncio.run(crawl_many_pages(page_url_list, original_query))
+        # print(f"120- 爬取网页内容:\n{result}")
+        return result
 
 
 @fc_register("tool")
-def CrawlPagesTool(page_url_list: List[str], query: str):
+def CrawlPagesTool(page_url_list: List[str], original_query: str):
     """
     Worker that crawl web page contents. Input should be a list of page url.
 
     Args:
         page_url_list (List[str]): list of page url to crawl.
-        query (str): user query.
-
+        original_query (str): original query.
     """
-    return asyncio.run(crawl_many_pages(page_url_list, query))
+    return CrawlPages(return_trace=True)(page_url_list, original_query)
 
 
 async def crawl_many_pages(page_url_list: List[str], query: str):
     # crawl4ai爬取url的内容，询问大模型词网页是否有用，有用则返回与用户提问相关的片段
-    # 创建信号量限制并发数为3,一个批次启动3个任务
-
+    # 每次处理batch_size个URL，直到处理的项目数量超过MAX_READ_PAGES
     try:
-        semaphore = asyncio.Semaphore(5)
+        batch_size = 5
+        max_read_pages = int(os.getenv("MAX_READ_PAGES", "5"))
+
+        semaphore = asyncio.Semaphore(batch_size)
+        processed_count = 0  # 记录已处理的项目数量
+        iteration_contexts = []
 
         async def process_link_with_sem(link):
             async with semaphore:
                 return await crawl_single_page(link, query)
 
-        # 每个批次的任务间隔1秒启动
-        async def delayed_task(index, link):
-            await asyncio.sleep(index * 1)
-            return await process_link_with_sem(link)
+        # 分批处理，每批batch_size个URL
+        for i in range(0, len(page_url_list), batch_size):
+            # 如果已处理的项目数量超过max_processed，则停止处理
+            if processed_count >= max_read_pages:
+                break
 
-        # 创建所有任务批次,开始执行,120不能太短了，因为除了爬虫还有一个提取摘要的过程要花时间
-        tasks = [
-            asyncio.wait_for(delayed_task(i, link), timeout=120)
-            for i, link in enumerate(page_url_list)
-        ]
-        # 收集结果
-        link_results = await asyncio.gather(*tasks, return_exceptions=True)
-        link_results = [
-            res for res in link_results if not isinstance(res, Exception)
-        ]
+            # 获取当前批次的URL
+            batch_urls = page_url_list[i : i + batch_size]
 
-        # 去掉None值
-        iteration_contexts = []
-        i = 0
-        for res in link_results:
-            if res:
-                iteration_contexts.append(res)
-                i += 1
+            # 每个批次的任务间隔1秒启动
+            async def delayed_task(index, link):
+                await asyncio.sleep(index * 1)
+                return await process_link_with_sem(link)
 
-        content =  "\n\n".join(iteration_contexts)
-        return content
+            # 创建当前批次的任务
+            tasks = [
+                asyncio.wait_for(delayed_task(j, link), timeout=120)
+                for j, link in enumerate(batch_urls)
+            ]
+
+            # 执行当前批次的任务
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            batch_results = [
+                res for res in batch_results if not isinstance(res, Exception)
+            ]
+
+            # 处理当前批次的结果
+            for res in batch_results:
+                if res and "Web content is irrelevant" not in res:
+                    iteration_contexts.append(res)
+
+            # 更新已处理的项目数量
+            processed_count = len(iteration_contexts)
+
+        content = "\n\n".join(iteration_contexts)
+        return f"<FINAL_ANSWER>{content}"
     except Exception as e:
         LOG.error(f"Crawl Pages error: {e}")
         return str(e)
+
 
 # async def crawl_single_page_using_craw4ai(page_url: str, query: str):
 #     browser_config = BrowserConfig(
@@ -185,30 +204,13 @@ curl -X POST http://10.119.101.21:9860/v1/scrape \
                 else:
                     text = await resp.text()
                     LOG.info(
-                        f"207- Firecrawl爬取 {page_url} 失败: {resp.status} - {text}"
+                        f"204-Error fetching webpage text with Firecrawl: {resp.status} - {text}"
                     )
                     return None
     except Exception as e:
         LOG.error(f"210-Error fetching webpage text with Firecrawl:{e}")
         return None
 
-
-
-@fc_register("tool")
-def LLMWorker(input: str):
-    """
-    A pretrained LLM like yourself. Useful when you need to act with general world knowledge and common sense. Prioritize it when you are confident in solving the problem yourself. Input can be any instruction.
-
-    Args:
-        input (str): instruction
-    """
-    try:
-        llm = lazyllm.OnlineChatModule(stream=False)
-        query = f"Respond in short directly with no extra words.\n\n{input}"
-        response = llm(query, llm_chat_history=[])
-        return response
-    except Exception as e:
-        LOG.error(f"LLMWorker error: {e}")
 
 def log(msg):
     print(f"183- msg:\n{msg}")
@@ -221,18 +223,19 @@ def build_web_search_agent():
         # 将query扩充为任务描述
         ppl.formarter = lambda query: AGENT_PROMPT.format(query=query)
 
-        ppl.agent = ReactAgent(
+        ppl.agent = ToolAgent(
             llm=lazyllm.OnlineChatModule(
-                source="uniin", enable_thinking=False, stream=False
+                source="qwen", enable_thinking=False, stream=False, return_trace=True
             ),
             tools=["WebSearchTool", "CrawlPagesTool"],
-            return_trace=True,
+            return_trace=False,
             max_retries=10,
         )
         # ppl.log = log
 
-        # 这一步的目的是从前面组件的输出中提取最终答案。因为 agent 的回复可能包含中间推理过程或其他多余文本，这个操作确保只提取出最终答案部分（在 `"Answer:"` 之后的内容）。如果没有 `"Answer:"` 标记，则保留原始输出不变。
-        ppl.clean = lazyllm.ifs(lambda x: "Answer:" in x, lambda x: x.split("Answer:")[-1], lambda x:x)
+        # ppl.llm = lazyllm.OnlineChatModule(
+        #     source="uniin", enable_thinking=False, stream=False
+        # ).prompt(WRITER_PROMPT)
 
     return ppl
 

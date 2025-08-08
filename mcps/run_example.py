@@ -1,11 +1,12 @@
 import os
 import argparse
 from fastmcp.server import FastMCP
-from mcps.servers.web_research.research import web_research
+from mcps.servers.example.math import add_tool, multiply_tool
 
 def create_server():
-    mcp_server = FastMCP("LazyLLM MCP Server")
-    mcp_server.tool()(web_research)
+    mcp_server = FastMCP("Example Server")
+    mcp_server.tool()(add_tool)
+    mcp_server.tool()(multiply_tool)
     return mcp_server
 
 

@@ -15,15 +15,19 @@ def build_statistical_agent():
     with pipeline() as sql_ppl:
 
         # 将用户的问题，扩充为一个对资深数据科学家的任务描述
-        sql_ppl.formarter = lambda query: bi_tools.BI_PROMPT.format(query=query, image_path="./images") 
+        sql_ppl.formarter = lambda query: bi_tools.BI_PROMPT.format(
+            query=query, image_path="./images"
+        )
         sql_ppl.log = log
 
         sql_ppl.agent = ReactAgent(
-                llm=lazyllm.OnlineChatModule(source='uniin', model="qwen3-32b", enable_thinking=False),
-                tools=['run_code', 'run_sql_query'],
-                return_trace=True,
-                max_retries=3,
-            )
+            llm=lazyllm.OnlineChatModule(
+                source="uniin", model="Qwen3-32B-Private", enable_thinking=False
+            ),
+            tools=["run_code", "run_sql_query"],
+            return_trace=True,
+            max_retries=3,
+        )
         sql_ppl.clean = lazyllm.ifs(lambda x: "Answer:" in x, lambda x: x.split("Answer:")[-1], lambda x:x)
 
     return sql_ppl

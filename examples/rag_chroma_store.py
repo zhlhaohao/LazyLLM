@@ -68,7 +68,7 @@ embedding_model = OnlineEmbeddingModule("qwen")
 # )
 
 # 对话模型
-chat_model = OnlineChatModule(source="uniin", model="qwen3-32b", stream=True)
+chat_model = OnlineChatModule(source="uniin", model="Qwen3-32B-Private", stream=True)
 # chat_model = OnlineChatModule(source="qwen", stream=True)
 
 # 排除某些文件和目录

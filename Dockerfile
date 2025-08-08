@@ -58,8 +58,6 @@ FROM base AS production
 USER root
 WORKDIR /lazyllm
 
-RUN mkdir -p /lazyllm/logs
-
 # 复制 Python 环境和包
 ENV VIRTUAL_ENV=/lazyllm/.venv
 COPY --from=builder ${VIRTUAL_ENV} ${VIRTUAL_ENV}

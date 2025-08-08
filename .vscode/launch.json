@@ -5,6 +5,18 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "web-research-debug",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "mcps.servers.web_research.research",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
       "name": "01-web-research-server",
       "type": "debugpy",
       "request": "launch",

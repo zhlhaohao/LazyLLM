@@ -21,12 +21,18 @@ os.environ['no_proxy'] = ','.join(list(no_proxies))
 
 def request(method, url, **kwargs):
     with requests.sessions.Session() as session:
+        # 不代理IP地址
         if os.environ.get("SYSTEM_PROXY") and _is_ip_address_url(url):
             try:
                 session.trust_env = False
                 return session.request(method=method, url=url, **kwargs)
             except Exception: pass
-        session.trust_env = True
+
+        # F8080 对于域名使用代理
+        session.trust_env = False
+        proxy = os.environ.get("SYSTEM_PROXY")
+        if proxy:
+            kwargs["proxies"] = {"http": proxy, "https": proxy}
         return session.request(method=method, url=url, **kwargs)
 
 

@@ -5,7 +5,8 @@ docker rm lazyllm
 
 docker run -itd --name lazyllm --restart=always \
     -v /home/lianghao/github:/github \
-    -p 10001:10001 \
+    -v /home/lianghao/logs/lazyllm:/root/logs \
+    -p 10001-10002:10001-10002 \
     --env-file .env \
-    lazyllm:250805-1
+    lazyllm:250808-2
 

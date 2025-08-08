@@ -3,6 +3,7 @@ from .toolsManager import register, ToolManager
 from .reactAgent import ReactAgent
 from .planAndSolveAgent import PlanAndSolveAgent
 from .rewooAgent import ReWOOAgent
+from .toolAgent import ToolAgent
 
 __all__ = [
     "ToolManager",
@@ -11,5 +12,6 @@ __all__ = [
     "register",
     "ReactAgent",
     "PlanAndSolveAgent",
-    "ReWOOAgent"
+    "ReWOOAgent",
+    "ToolAgent",
 ]
