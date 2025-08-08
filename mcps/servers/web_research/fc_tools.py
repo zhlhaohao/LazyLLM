@@ -10,15 +10,15 @@ from .utils import extract_relevant_context
 import json
 from .prompts import AGENT_PROMPT
 
-search_max_results = int(os.getenv("SEARCH_MAX_RESULTS", "2"))
+search_max_results = 100
 
 @fc_register("tool")
 def WebSearchTool(query: str, language: str = "zh-CN", time_range: str = ""):
     """Worker that search web pages using searxng, input should be a query.
 
     Args:
-        query (str): user query.
-        language (str, optional): language of the query".
+        query (str): query, not original query.
+        language (str, optional): language code of the query.
         time_range (str): [year|month|week|day], time range of the search. time_range=year when query contains "this year", time_range=month when query contains "this month", time_range=week when query contains "this week", time_range=day when query contains "today".
     """
 
@@ -44,39 +44,35 @@ def WebSearchTool(query: str, language: str = "zh-CN", time_range: str = ""):
     return asyncio.run(worker(query, language, time_range))
 
 
-class CrawlPages(ModuleBase):
-    """
-    主要是为了测试reture_trace=True的情况，在作为工具被调用的情况下，由于线程id，无法实现在主程序中被捕获,还需要继续研究源码
-    """
-
-    def __init__(self, return_trace: bool = False):
-        super().__init__(return_trace=return_trace)
-
-    def forward(self, page_url_list: List[str], original_query: str):
-        # print(f"\n\n66- original_query:\n\n{original_query}")
-        result = asyncio.run(crawl_many_pages(page_url_list, original_query))
-        # print(f"120- 爬取网页内容:\n{result}")
-        return result
-
-
 @fc_register("tool")
-def CrawlPagesTool(page_url_list: List[str], original_query: str):
+def CrawlPagesTool(
+    page_url_list: List[str], relevant_content: str, valid_threshold: int = 5
+):
     """
     Worker that crawl web page contents. Input should be a list of page url.
 
     Args:
-        page_url_list (List[str]): list of page url to crawl.
-        original_query (str): original query.
+        page_url_list (List[str]): original page_url_list from web search tool.
+        relevant_content (str): relevant_content.
+        valid_threshold (int): valid threshold
     """
-    return CrawlPages(return_trace=True)(page_url_list, original_query)
+    # print(f"\n\n66- user_ask:\n\n{user_ask}")
+    result = asyncio.run(
+        crawl_many_pages(page_url_list, relevant_content, valid_threshold)
+    )
+    # print(f"120- 爬取网页内容:\n{result}")
+    return result
 
 
-async def crawl_many_pages(page_url_list: List[str], query: str):
+async def crawl_many_pages(
+    page_url_list: List[str], relevant_content: str, valid_threshold: int
+):
     # crawl4ai爬取url的内容，询问大模型词网页是否有用，有用则返回与用户提问相关的片段
-    # 每次处理batch_size个URL，直到处理的项目数量超过MAX_READ_PAGES
+    # 每次处理batch_size个URL，直到处理的项目数量超过valid_threshold
     try:
         batch_size = 5
-        max_read_pages = int(os.getenv("MAX_READ_PAGES", "5"))
+        if valid_threshold < batch_size:
+            batch_size = valid_threshold
 
         semaphore = asyncio.Semaphore(batch_size)
         processed_count = 0  # 记录已处理的项目数量
@@ -84,12 +80,12 @@ async def crawl_many_pages(page_url_list: List[str], query: str):
 
         async def process_link_with_sem(link):
             async with semaphore:
-                return await crawl_single_page(link, query)
+                return await crawl_single_page(link, relevant_content)
 
         # 分批处理，每批batch_size个URL
         for i in range(0, len(page_url_list), batch_size):
             # 如果已处理的项目数量超过max_processed，则停止处理
-            if processed_count >= max_read_pages:
+            if processed_count >= valid_threshold:
                 break
 
             # 获取当前批次的URL
@@ -156,7 +152,7 @@ async def crawl_many_pages(page_url_list: List[str], query: str):
 #         return str(e)
 
 
-async def crawl_single_page(page_url: str, query: str):
+async def crawl_single_page(page_url: str, relevant_content: str):
     """Firecrawl爬取网页的内容
 
 curl -X POST http://10.119.101.21:9860/v1/scrape \
@@ -198,7 +194,7 @@ curl -X POST http://10.119.101.21:9860/v1/scrape \
                     result = json.loads(resp)
                     content = result.get("data").get("markdown")
                     # 提取网页中与问题相关的片段
-                    summary = extract_relevant_context(query, content, page_url)
+                    summary = extract_relevant_context(relevant_content, content, page_url)
                     result = f"### {page_url} content:\n{summary}"
                     return result
                 else:
@@ -221,7 +217,7 @@ def build_web_search_agent():
         # ppl.log = log
 
         # 将query扩充为任务描述
-        ppl.formarter = lambda query: AGENT_PROMPT.format(query=query)
+        ppl.format = lambda query: AGENT_PROMPT.format(query=query)
 
         ppl.agent = ToolAgent(
             llm=lazyllm.OnlineChatModule(

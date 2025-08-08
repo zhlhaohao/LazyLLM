@@ -82,9 +82,7 @@ EXAMPLE JSON OUTPUT:
     "queries": [
         "query1",
         "query2"
-    ],
-    "original_query": original query,
-    "language": "en"
+    ]
 }}
 
 

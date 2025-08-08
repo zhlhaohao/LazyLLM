@@ -23,18 +23,23 @@ def merge_args(*args):
     return text
 
 
-def transform_queries(input):
-    source_obj = json.loads(input)
-    queries = source_obj.get("queries", [])
-    original_query = source_obj.get("original_query", "")
-    language = source_obj.get("language", "zh-CN")
-    return [
+def transform_queries(queries, input_data):
+    queries = json.loads(queries)["queries"]
+
+    result = [
         json.dumps(
-            {"query": query, "language": language, "original_query": original_query},
+            {
+                "query": query,
+                "relevant_content": input_data["query"],
+                "language": input_data["language"],
+                "valid_threshold": input_data["valid_threshold"],
+                # "expand_query_count": input_data["expand_query_count"],
+            },
             ensure_ascii=False,
         )
         for query in queries
     ]
+    return result
 
 
 def web_search(query):
@@ -45,18 +50,51 @@ def web_search(query):
         return "出现错误，无相关新闻资料返回"
 
 
+def format_input(input):
+    data = json.loads(input)
+    depth = data.get("depth")
+    if depth == 1:
+        valid_threshold = 3
+        expand_query_count = 1
+    elif depth == 2:
+        valid_threshold = 5
+        expand_query_count = 2
+    elif depth == 3:
+        valid_threshold = 5
+        expand_query_count = 3
+    elif depth == 4:
+        valid_threshold = 5
+        expand_query_count = 5
+    elif depth == 5:
+        valid_threshold = 10
+        expand_query_count = 5
+    else:
+        valid_threshold = 5
+        expand_query_count = 3
+    return {
+        "query": data["query"],
+        "language": data["language"],
+        "valid_threshold": valid_threshold,
+        "expand_query_count": expand_query_count,
+    }
+
+
+def expand_prompt(_, input_data):
+    return EXPAND_QUERY_PROMPT.format(
+        query=input_data["query"], expand_query_count=input_data["expand_query_count"]
+    )
+
+
 def build_research_agent():
     with pipeline() as ppl:
-        # 扩充query到N个querys
-        ppl.prompt = lambda input: EXPAND_QUERY_PROMPT.format(
-            query=input, expand_query_count=os.getenv("EXPAND_QUERY_COUNT", 3)
-        )
-
-        ppl.expand_query = lazyllm.OnlineChatModule("qwen", stream=False)
+        ppl.input_data = format_input
         # ppl.log1 = log
 
-        ppl.transform_queries = lambda input: transform_queries(input)
-        # ppl.log2 = log
+        ppl.expand_prompt = expand_prompt | bind(input_data=ppl.input_data)
+        ppl.expand_query = lazyllm.OnlineChatModule("qwen", stream=False)
+        ppl.transform_queries = transform_queries | bind(input_data=ppl.input_data)
+
+        ppl.log2 = log
 
         ppl.paralle_process = lazyllm.warp(web_search, _concurrent=False)
         # ppl.log3 = log
@@ -79,6 +117,10 @@ def build_research_agent():
 
 async def web_research(
     query: Annotated[str, Field(description="user's query, do not change")],
+    language: Annotated[
+        str, Field(description="language code of research, default to zh-CN")
+    ] = "zh-CN",
+    depth: Annotated[int, Field(description="depth of research, default to 3")] = 3,
     ctx: Context = None,
 ) -> str:
     """
@@ -88,7 +130,10 @@ async def web_research(
     with lazyllm.ThreadPoolExecutor(1) as executor:
         future = executor.submit(
             main_ppl,
-            query,
+            json.dumps(
+                {"query": query, "language": language, "depth": depth},
+                ensure_ascii=False,
+            ),
         )
         buffer = ""
         while True:
@@ -120,11 +165,16 @@ if __name__ == "__main__":
     # query = "本月华盛顿有什么政治新闻，用英语"
     # query = "2025年8月，广州的天气情况"
     # query = "请分析芬太尼的化学结构，与吗啡 杜冷丁进行比较,用英语"
-    query = "中国和美国的核聚变研究的最新情况,进行技术路线以及成功前景的比较"
+    query = "电视剧 扫毒风暴 ，各个主演的评价分析"
     # query = "请提供俄罗斯人对中国人的看法，用俄语"
     main_ppl = build_research_agent()
 
-    ans = ActionModule(main_ppl).start()(query)
+    ans = ActionModule(main_ppl).start()(
+        json.dumps(
+            {"query": query, "language": "zh-CN", "depth": 2},
+            ensure_ascii=False,
+        )
+    )
     print(f"最终回答:\n{ans}")
 
     # with lazyllm.ThreadPoolExecutor(1) as executor:
