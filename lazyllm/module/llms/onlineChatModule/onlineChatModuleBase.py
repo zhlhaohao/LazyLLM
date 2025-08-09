@@ -277,38 +277,103 @@ class OnlineChatModuleBase(ModuleBase):
             return json.dumps(self._parse_output_by_key(".", response), ensure_ascii=False)
 
     def _merge_stream_result(self, src: List[str | int | list | dict]):
+        """
+        合并流式返回的结果。根据元素类型进行不同的合并策略：
+        - 字符串：拼接所有非空字符串
+        - 列表：递归合并每个子元素
+        - 字典：按字段递归合并，特殊处理 'index' 和 'finish_reason' 字段
+        - 整数：返回最后一个值
+        """
+        # if not src:
+        #     return ""
+
+        # 获取所有非 None 元素的类型集合
         types = set(type(ele) for ele in src if ele is not None)
-        # if not (len(src) > 0 and len(types) <= 1):
-        #     lazyllm.LOG.debug(f"hahahahah:\n{src}")
+
+        # 确保列表不为空且所有元素类型一致
         assert len(src) > 0 and len(types) <= 1, f"The elements in the list: {src} are of inconsistent types"
+
+        # 如果只有一个元素，直接返回该元素
         if len(src) == 1:
             return src[0]
+
+        # 处理字符串类型（包括 None）
         if all(isinstance(ele, str) or ele is None for ele in src):
-            if all(ele == src[-1] or ele is None for ele in src) or (self._model_optional_params
-               and not self._model_optional_params.get("incremental_output", True)):
+            # 如果所有元素都相同或者 incremental_output 为 False，则返回最后一个元素
+            if all(ele == src[-1] or ele is None for ele in src) or (
+                self._model_optional_params
+                and not self._model_optional_params.get("incremental_output", True)
+            ):
                 return src[-1]
             else:
+                # 否则将所有非空字符串拼接起来
                 return "".join(ele for ele in src if ele is not None)
+
+        # 处理列表类型
         elif all(isinstance(ele, list) for ele in src):
-            # F8080 uniin 最后一条是空数组
+            # F8080 uniin 最后一条是空数组，需要移除
             if len(src[-1]) == 0:
                 src = src[:-1]
 
+            # 确保所有列表长度一致
             assert all(len(src[-1]) == len(ele) for ele in src), f"The lists of elements: {src} have different lengths."
+
+            # 递归合并每个位置的元素
             ret = [self._merge_stream_result([ele[idx] for ele in src]) for idx in range(len(src[-1]))]
+            if len(ret) == 0:
+                return ""
+
+            # 如果结果是列表的列表，返回第一个元素；否则返回整个结果
             return ret[0] if isinstance(ret[0], list) else ret
+
+        # 处理字典类型
         elif all(isinstance(ele, dict) for ele in src):
+            # 如果存在 index 字段，按 index 分组处理
             if "index" in src[-1]:  # If there are multiple index values that need to be appended.
                 data_sorted = sorted(src, key=lambda x: x['index'])
                 grouped_data = [list(g) for k, g in groupby(data_sorted, key=lambda x: x['index'])]
                 if len(grouped_data) > 1:
+                    # 对每组数据递归调用合并函数
                     return [self._merge_stream_result(src) for src in grouped_data]
-            return {k: "tool_calls" if k == "finish_reason" and "tool_calls" in [d[k] for d in src if k in d]
-                    else self._merge_stream_result([d[k] for d in src if k in d]) for k in set().union(*src)}
+
+            # 合并字典类型的流式响应结果
+            # 对于每个键，根据键名进行不同的处理：
+            # 1. 如果键是 "finish_reason" 且对应的值中包含 "tool_calls"，则将该键的值设为 "tool_calls"
+            # 2. 对于其他键，递归调用 _merge_stream_result 合并该键在所有字典中的值
+            # set().union(*src) 用来获取所有字典中出现过的键的集合
+            merged_dict = {}
+            # 获取所有字典中出现过的键的集合
+            all_keys = set().union(*src)
+            for key in all_keys:
+                # 检查当前键是否为 "finish_reason" 且值中包含 "tool_calls"
+                if key == "finish_reason" and "tool_calls" in [
+                    item[key] for item in src if key in item
+                ]:
+                    # 特殊处理：将 finish_reason 设为 "tool_calls"
+                    merged_dict[key] = "tool_calls"
+                else:
+                    # 递归合并该键在所有字典中的值
+                    values_to_merge = [item[key] for item in src if key in item]
+                    # F8080 - UNIIN 会出现很多空数组元素，要删除否则会出错
+                    if isinstance(values_to_merge, list):
+                        values_to_merge = [
+                            item for item in values_to_merge if item != []
+                        ]
+
+                    if values_to_merge:
+                        merged_dict[key] = self._merge_stream_result(values_to_merge)
+
+            return merged_dict
+
+        # 处理整数类型
         elif all(isinstance(ele, int) for ele in src):
+            # 如果所有元素都相同则返回任意一个，否则返回最后一个
             return src[-1] if all(ele == src[-1] for ele in src) else src[-1]
+
+        # 不支持的类型抛出异常
         else:
             raise TypeError(f"The elements in list {src} are of inconsistent types.")
+
 
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None, tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):  # noqa C901
         """LLM inference interface"""
@@ -350,7 +415,11 @@ class OnlineChatModuleBase(ModuleBase):
         if not stream_output and "qwen3" in self._model_name.lower():
             data["enable_thinking"] = False
 
+        # F8080
         lazyllm.LOG.debug(f"llm Instruction:\n{data['messages']}")
+        if not data["enable_thinking"] and "qwen3" in data["model"].lower():
+            data["messages"][-1]["content"] += "/no_think"
+
         with requests.post(self._url, json=data, headers=self._headers, stream=stream_output, proxies=proxies) as r:
             if r.status_code != 200:  # request error
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
@@ -374,6 +443,12 @@ class OnlineChatModuleBase(ModuleBase):
             extractor = self._extract_specified_key_fields(
                 self._merge_stream_result(msg_json)
             )
+
+            # F8080 使用正则表达式删除 <think> 标签及其内容
+            if isinstance(extractor, str) and not data["enable_thinking"]:
+                extractor = re.sub(
+                    r"<think>.*?</think>", "", extractor, flags=re.DOTALL
+                )
 
             return self._formatter(extractor) if extractor else ""
 

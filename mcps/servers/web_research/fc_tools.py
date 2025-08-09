@@ -1,15 +1,17 @@
 import asyncio
-import lazyllm
-from lazyllm import fc_register, pipeline, ModuleBase
-import aiohttp
-import os
-from lazyllm import LOG
-from typing import List
-from lazyllm.tools.agent import ToolAgent
-from .utils import extract_relevant_context
 import json
-from .prompts import AGENT_PROMPT
+import os
+import aiohttp
+import lazyllm
+from datetime import datetime
+from lazyllm import fc_register, pipeline, OnlineChatModule, LOG
+from lazyllm.tools.agent import ToolAgent
+from typing import List
+from .prompts import AGENT_PROMPT, EXTRACT_PROMPT
 
+
+agent_source = os.environ.get("AGENT_SOURCE", "qwen")
+agent_model = os.environ.get("AGENT_MODEL", "qwen")
 search_max_results = 100
 
 @fc_register("tool")
@@ -123,33 +125,27 @@ async def crawl_many_pages(
         return str(e)
 
 
-# async def crawl_single_page_using_craw4ai(page_url: str, query: str):
-#     browser_config = BrowserConfig(
-#         headless=True,
-#         verbose=True,
-#     )
-#     run_config = CrawlerRunConfig(
-#         cache_mode=CacheMode.ENABLED,
-#         markdown_generator=DefaultMarkdownGenerator(
-#             content_filter=PruningContentFilter(threshold=0.48, threshold_type="fixed", min_word_threshold=0)
-#         ),
-#         proxy_config=ProxyConfig(server="http://192.168.50.150:7890")
-#     )
-#     try:
-#         async with AsyncWebCrawler(config=browser_config) as crawler:
-#             result = await crawler.arun(
-#                 url=page_url,
-#                 config=run_config
-#             )
-#             content = result.markdown
-#             #   LOG.info(f"{content}")
-#             # 提取网页中与问题相关的片段
-#             summary = extract_relevant_context(query, content, page_url)
-#             result = f"### {page_url} content:\n{summary}"
-#             return result
-#     except Exception as e:
-#         LOG.error(f"Crawl Page {page_url} fails: {e}")
-#         return str(e)
+MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", 2000))
+
+
+# 返回网页内容上与问题有关的片段
+def extract_relevant_context(query, page_text, page_url):
+    prompt = EXTRACT_PROMPT.format(
+        query=query,
+        page_text=page_text,
+        context_length=MAX_CONTEXT_LENGTH,
+        current_date=get_current_date_us_full(),
+        page_url=page_url,
+    )
+    result = OnlineChatModule(
+        source=agent_source, model=agent_model, stream=False, enable_thinking=False
+    )(prompt, llm_chat_history=[])
+    return result
+
+
+def get_current_date_us_full():
+    today = datetime.now()
+    return today.strftime("%B %d, %Y")
 
 
 async def crawl_single_page(page_url: str, relevant_content: str):
@@ -221,17 +217,16 @@ def build_web_search_agent():
 
         ppl.agent = ToolAgent(
             llm=lazyllm.OnlineChatModule(
-                source="qwen", enable_thinking=False, stream=False, return_trace=True
+                source=agent_source,
+                model=agent_model,
+                enable_thinking=False,
+                stream=False,
+                return_trace=True,
             ),
             tools=["WebSearchTool", "CrawlPagesTool"],
             return_trace=False,
             max_retries=10,
         )
-        # ppl.log = log
-
-        # ppl.llm = lazyllm.OnlineChatModule(
-        #     source="uniin", enable_thinking=False, stream=False
-        # ).prompt(WRITER_PROMPT)
 
     return ppl
 

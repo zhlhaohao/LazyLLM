@@ -2,11 +2,11 @@ import lazyllm
 import json
 from .fc_tools import build_web_search_agent
 from lazyllm import pipeline, ActionModule, ChatPrompter, bind, LOG
-from .prompts import RESEARH_PROMPT, EXPAND_QUERY_PROMPT, SUMMARY_PROMPT
-import os
-from typing import Annotated, List
+from .prompts import EXPAND_QUERY_PROMPT, SUMMARY_PROMPT
+from typing import Annotated
 from fastmcp import Context
 from pydantic import Field
+from .fc_tools import agent_model, agent_source
 
 def log(*args):
     print("16- log:")
@@ -23,21 +23,20 @@ def merge_args(*args):
     return text
 
 
-def transform_queries(queries, input_data):
-    queries = json.loads(queries)["queries"]
+def transform_queries(expanded_queries, input_data):
+    obj = json.loads(expanded_queries)
 
     result = [
         json.dumps(
             {
                 "query": query,
-                "relevant_content": input_data["query"],
+                "relevant_content": obj["translated_query"],
                 "language": input_data["language"],
                 "valid_threshold": input_data["valid_threshold"],
-                # "expand_query_count": input_data["expand_query_count"],
             },
             ensure_ascii=False,
         )
-        for query in queries
+        for query in obj["queries"]
     ]
     return result
 
@@ -80,39 +79,33 @@ def format_input(input):
 
 
 def expand_prompt(_, input_data):
-    return EXPAND_QUERY_PROMPT.format(
-        query=input_data["query"], expand_query_count=input_data["expand_query_count"]
+    prompt = EXPAND_QUERY_PROMPT.format(
+        query=input_data["query"],
+        expand_query_count=input_data["expand_query_count"],
+        language=input_data["language"],
     )
+    return prompt
 
 
 def build_research_agent():
     with pipeline() as ppl:
         ppl.input_data = format_input
-        # ppl.log1 = log
 
         ppl.expand_prompt = expand_prompt | bind(input_data=ppl.input_data)
-        ppl.expand_query = lazyllm.OnlineChatModule("qwen", stream=False)
+        ppl.expand_query = lazyllm.OnlineChatModule(
+            source=agent_source, model=agent_model, enable_thinking=False, stream=False
+        )
         ppl.transform_queries = transform_queries | bind(input_data=ppl.input_data)
 
         ppl.log2 = log
 
-        ppl.paralle_process = lazyllm.warp(web_search, _concurrent=False)
-        # ppl.log3 = log
+        ppl.paralle_process = lazyllm.warp(web_search, _concurrent=True)
 
         ppl.merge = merge_args
 
-        # ppl.formatter = (
-        #     lambda input, query: dict(
-        #         context_str=input,
-        #         query=query,
-        #     )
-        # ) | bind(query=ppl.input)
-        # ppl.log4 = log
-
-        ppl.summary = lazyllm.OnlineChatModule("qwen", enable_thinking=False).prompt(
-            ChatPrompter(instruction=SUMMARY_PROMPT)
-        )
-
+        ppl.summary = lazyllm.OnlineChatModule(
+            source=agent_source, model=agent_model, enable_thinking=False, stream=True
+        ).prompt(ChatPrompter(instruction=SUMMARY_PROMPT))
     return ppl
 
 async def web_research(
@@ -169,14 +162,20 @@ if __name__ == "__main__":
     # query = "请提供俄罗斯人对中国人的看法，用俄语"
     main_ppl = build_research_agent()
 
+    # # 图形化界面
+    # lazyllm.WebModule(main_ppl, port=20012).start().wait()
+    #
+
+    # 命令行界面
     ans = ActionModule(main_ppl).start()(
         json.dumps(
-            {"query": query, "language": "zh-CN", "depth": 2},
+            {"query": query, "language": "zh-CN", "depth": 3},
             ensure_ascii=False,
         )
     )
     print(f"最终回答:\n{ans}")
 
+    ## 流式界面
     # with lazyllm.ThreadPoolExecutor(1) as executor:
     #     future = executor.submit(main_ppl, query)
     #     buffer = ""

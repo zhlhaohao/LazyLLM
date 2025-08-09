@@ -74,19 +74,25 @@ Query：
 """
 
 
-EXPAND_QUERY_PROMPT = """You are an expert research assistant. Given the user's query, generate up to {expand_query_count} distinct, precise search queries that would help gather comprehensive information on the topic. If the user requests a specific language, please include it in the response, defaulting to zh-CN.
-CRITICAL: You must answer in this JSON format
+EXPAND_QUERY_PROMPT = """You are an expert research assistant. do as follows step by step.
+1. translate the user's query into target language.
+2. Given the user's query, generate up to {expand_query_count} distinct, precise search queries in target language that would help gather comprehensive information on the topic.
 
+CRITICAL: You must answer in this JSON format
 EXAMPLE JSON OUTPUT:
 {{
     "queries": [
         "query1",
         "query2"
-    ]
+    ],
+    translated_query: translated_query
 }}
 
+target language:
+{language}
 
-query:\n{query}
+query:
+{query}
 """
 
 
