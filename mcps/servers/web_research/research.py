@@ -169,7 +169,7 @@ if __name__ == "__main__":
     # 命令行界面
     ans = ActionModule(main_ppl).start()(
         json.dumps(
-            {"query": query, "language": "zh-CN", "depth": 3},
+            {"query": query, "language": "zh-CN", "depth": 2},
             ensure_ascii=False,
         )
     )

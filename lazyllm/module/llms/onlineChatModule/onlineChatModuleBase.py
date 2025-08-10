@@ -284,9 +284,6 @@ class OnlineChatModuleBase(ModuleBase):
         - 字典：按字段递归合并，特殊处理 'index' 和 'finish_reason' 字段
         - 整数：返回最后一个值
         """
-        # if not src:
-        #     return ""
-
         # 获取所有非 None 元素的类型集合
         types = set(type(ele) for ele in src if ele is not None)
 
@@ -311,17 +308,19 @@ class OnlineChatModuleBase(ModuleBase):
 
         # 处理列表类型
         elif all(isinstance(ele, list) for ele in src):
-            # F8080 uniin 最后一条是空数组，需要移除
-            if len(src[-1]) == 0:
-                src = src[:-1]
+            # F8080 uniin 会产生多余的空数组，需要移除
+            src = [item for item in src if item != []]
+            if len(src) == 0:
+                return ""
 
             # 确保所有列表长度一致
             assert all(len(src[-1]) == len(ele) for ele in src), f"The lists of elements: {src} have different lengths."
 
             # 递归合并每个位置的元素
-            ret = [self._merge_stream_result([ele[idx] for ele in src]) for idx in range(len(src[-1]))]
-            if len(ret) == 0:
-                return ""
+            ret = [
+                self._merge_stream_result([ele[idx] for ele in src])
+                for idx in range(len(src[-1]))
+            ]
 
             # 如果结果是列表的列表，返回第一个元素；否则返回整个结果
             return ret[0] if isinstance(ret[0], list) else ret
@@ -354,14 +353,7 @@ class OnlineChatModuleBase(ModuleBase):
                 else:
                     # 递归合并该键在所有字典中的值
                     values_to_merge = [item[key] for item in src if key in item]
-                    # F8080 - UNIIN 会出现很多空数组元素，要删除否则会出错
-                    if isinstance(values_to_merge, list):
-                        values_to_merge = [
-                            item for item in values_to_merge if item != []
-                        ]
-
-                    if values_to_merge:
-                        merged_dict[key] = self._merge_stream_result(values_to_merge)
+                    merged_dict[key] = self._merge_stream_result(values_to_merge)
 
             return merged_dict
 
@@ -415,8 +407,8 @@ class OnlineChatModuleBase(ModuleBase):
         if not stream_output and "qwen3" in self._model_name.lower():
             data["enable_thinking"] = False
 
-        # F8080
         lazyllm.LOG.debug(f"llm Instruction:\n{data['messages']}")
+        # F8080
         if not data["enable_thinking"] and "qwen3" in data["model"].lower():
             data["messages"][-1]["content"] += "/no_think"
 
@@ -444,7 +436,7 @@ class OnlineChatModuleBase(ModuleBase):
                 self._merge_stream_result(msg_json)
             )
 
-            # F8080 使用正则表达式删除 <think> 标签及其内容
+            # F8080 删除 <think></think> 标签及其内容
             if isinstance(extractor, str) and not data["enable_thinking"]:
                 extractor = re.sub(
                     r"<think>.*?</think>", "", extractor, flags=re.DOTALL
