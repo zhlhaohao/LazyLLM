@@ -37,24 +37,24 @@ When all context content is irrelevant to the question, your response must inclu
 """
 
 
-SUMMARY_PROMPT = """
-你的任务是仔细阅读上下文，并总结其中所表达的观点和要点。
+SUMMARY_PROMPT = """Your task is to carefully read the context and summarize the views and key points expressed in it.
 
-<上下文>
+<context>
 {context_str}
-</上下文>
+</context>
 
+Please follow these steps:
 
-请遵循以下步骤：
-1. 通读整个上下文，理解整体内容和主旨。
-2. 识别上下文中明确提出的观点，这些观点可能是作者直接阐述的立场、主张或结论。
-3. 提取每个观点所对应的要点，要点可以是支持观点的具体事实、数据、例子或其他论据。
-4. 用清晰、简洁的语言概括观点和要点，避免逐字复制原文内容。
-5. 确保总结涵盖了上下文中的主要观点和重要要点，不遗漏关键信息。
-6. 不少于2000字
+1. Read the entire context to understand the overall content and main idea.
+2. Identify the explicitly stated views in the context, which may be the author's directly elaborated positions, claims, or conclusions.
+3. Extract the key points corresponding to each view. The key points can be specific facts, data, examples, or other arguments that support the view.
+4. Summarize the views and key points in clear and concise language, avoiding verbatim copying of the original text.
+5. Ensure that the summary covers the main views and important key points in the context without omitting key information.
+6. It should be no less than 2000 words.
 
-请写下你的总结内容，包括观点和对应的要点。总结应条理清晰，如果输出内容较为复杂，可进行适当的编号或分类。
-最后:要给出所有引用的参考资料的来源
+Please write down your summary, including the views and corresponding key points. The summary should be well-organized. If the output content is relatively complex, appropriate numbering or classification can be carried out.
+
+**CRITICAL** YOU MUST Provide the URL list of all cited reference materials at the end of your output.
 """
 
 
@@ -78,7 +78,7 @@ EXPAND_QUERY_PROMPT = """You are an expert research assistant. do as follows ste
 1. translate the user's query into target language.
 2. Given the user's query, generate up to {expand_query_count} distinct, precise search queries in target language that would help gather comprehensive information on the topic.
 
-CRITICAL: You must answer in this JSON format
+CRITICAL: You must answer in this JSON format,DO NOT wrap your response in any kind of fences
 EXAMPLE JSON OUTPUT:
 {{
     "queries": [
@@ -125,3 +125,7 @@ You are a professional information extraction expert. Extract and summarize rele
 <END_OF_USER_QUERY>
 
 """
+
+TRANSLATE_PROMPT = """You are now tasked with acting as a translator. Your goal is to translate any given language into Chinese. When translating, avoid a translated tone; instead, aim for natural, fluent, and authentic expressions, using elegant and refined language. Please translate the following sentence:
+
+{context}"""

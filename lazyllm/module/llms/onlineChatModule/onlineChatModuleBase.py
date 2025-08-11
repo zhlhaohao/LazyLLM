@@ -284,6 +284,9 @@ class OnlineChatModuleBase(ModuleBase):
         - 字典：按字段递归合并，特殊处理 'index' 和 'finish_reason' 字段
         - 整数：返回最后一个值
         """
+        if not src:
+            return ""
+
         # 获取所有非 None 元素的类型集合
         types = set(type(ele) for ele in src if ele is not None)
 
@@ -421,8 +424,33 @@ class OnlineChatModuleBase(ModuleBase):
             if isinstance(stream_output, dict):
                 prefix, prefix_color = stream_output.get('prefix', ''), stream_output.get('prefix_color', '')
                 if prefix: FileSystemQueue().enqueue(lazyllm.colored_text(prefix, prefix_color))
-            msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()
-                            if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]),))
+
+            # 原始语句：
+            # msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()
+            #                 if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]),))
+
+            if stream_output:
+                # 流式输出：逐行处理响应
+                json_objects = []
+                for line in r.iter_lines():
+                    # 过滤掉空行
+                    if len(line) > 0:
+                        # 将每行转换为JSON对象
+                        json_obj = self._str_to_json(line, stream_output)
+                        json_objects.append(json_obj)
+            else:
+                # 非流式输出：一次性处理整个响应文本
+                json_objects = [self._str_to_json(r.text, stream_output)]
+
+            # 过滤掉空值或None值，只保留有效的JSON对象
+            filtered_json_objects = []
+            for x in json_objects:
+                if x:  # 检查对象是否为真值（非空、非None）
+                    filtered_json_objects.append(x)
+
+            # 转换为列表格式
+            msg_json = list(filtered_json_objects)
+
             if isinstance(stream_output, dict):
                 suffix, suffix_color = stream_output.get('suffix', ''), stream_output.get('suffix_color', '')
                 if suffix: FileSystemQueue().enqueue(lazyllm.colored_text(suffix, suffix_color))
