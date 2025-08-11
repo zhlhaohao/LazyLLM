@@ -50,7 +50,7 @@ Please follow these steps:
 3. Extract the key points corresponding to each view. The key points can be specific facts, data, examples, or other arguments that support the view.
 4. Summarize the views and key points in clear and concise language, avoiding verbatim copying of the original text.
 5. Ensure that the summary covers the main views and important key points in the context without omitting key information.
-6. It should be no less than 2000 words.
+6. It should be no less than 1000 words.
 
 Please write down your summary, including the views and corresponding key points. The summary should be well-organized. If the output content is relatively complex, appropriate numbering or classification can be carried out.
 
@@ -75,8 +75,9 @@ Query：
 
 
 EXPAND_QUERY_PROMPT = """You are an expert research assistant. do as follows step by step.
-1. translate the user's query into target language.
-2. Given the user's query, generate up to {expand_query_count} distinct, precise search queries in target language that would help gather comprehensive information on the topic.
+
+1. Translate the user's query into '{language}'.
+2. Given the user's query, generate up to {expand_query_count} distinct, precise search queries in '{language}' that would help gather comprehensive information on the topic.
 
 CRITICAL: You must answer in this JSON format,DO NOT wrap your response in any kind of fences
 EXAMPLE JSON OUTPUT:
@@ -88,8 +89,24 @@ EXAMPLE JSON OUTPUT:
     translated_query: translated_query
 }}
 
-target language:
-{language}
+query:
+{query}
+"""
+
+
+EXPAND_QUERY_PROMPT_ZH = """You are an expert research assistant. do as follows step by step.
+
+1. Given the user's query, generate up to {expand_query_count} distinct, precise search queries that would help gather comprehensive information on the topic.
+
+CRITICAL: You must answer in this JSON format,DO NOT wrap your response in any kind of fences
+EXAMPLE JSON OUTPUT:
+{{
+    "queries": [
+        "query1",
+        "query2"
+    ],
+    translated_query: translated_query
+}}
 
 query:
 {query}
@@ -126,6 +143,13 @@ You are a professional information extraction expert. Extract and summarize rele
 
 """
 
-TRANSLATE_PROMPT = """You are now tasked with acting as a translator. Your goal is to translate any given language into Chinese. When translating, avoid a translated tone; instead, aim for natural, fluent, and authentic expressions, using elegant and refined language. Please translate the following sentence:
+TRANSLATE_PROMPT = """You are a translator, translate any given language into Chinese. avoid a translated tone; instead, aim for natural, fluent, and authentic expressions:
 
-{context}"""
+<start_of_sentence>
+
+{context}
+
+<end_of_sentence>
+
+**CRITICAL**: DO NOT OUTPUT EXTRA WORDS EXCEPT the translated sentence.
+"""

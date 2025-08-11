@@ -54,8 +54,8 @@ class FunctionCall(ModuleBase):
     def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False,
                  stream: bool = False, _prompt: str = None):
         super().__init__(return_trace=return_trace)
-        if isinstance(llm, OnlineChatModule) and llm.series == "QWEN" and llm._stream is True:
-            raise ValueError("The qwen platform does not currently support stream function calls.")
+        # if isinstance(llm, OnlineChatModule) and llm.series == "QWEN" and llm._stream is True:
+        #     raise ValueError("The qwen platform does not currently support stream function calls.")
         if _prompt is None:
             _prompt = FC_PROMPT_ONLINE if isinstance(llm, OnlineChatModule) else FC_PROMPT_LOCAL
 

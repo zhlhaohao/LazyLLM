@@ -2,7 +2,12 @@ import lazyllm
 import json
 from .fc_tools import build_web_search_agent
 from lazyllm import pipeline, ActionModule, ChatPrompter, bind, LOG
-from .prompts import EXPAND_QUERY_PROMPT, SUMMARY_PROMPT, TRANSLATE_PROMPT
+from .prompts import (
+    EXPAND_QUERY_PROMPT,
+    SUMMARY_PROMPT,
+    TRANSLATE_PROMPT,
+    EXPAND_QUERY_PROMPT_ZH,
+)
 from typing import Annotated
 from fastmcp import Context
 from pydantic import Field
@@ -50,6 +55,8 @@ def transform_queries(expanded_queries, input_data):
         )
         for query in obj["queries"]
     ]
+
+    LOG.info(f"59- web_search_queries:{result}")
     return result
 
 
@@ -66,19 +73,19 @@ def format_input(input):
     data = json.loads(input)
     depth = data.get("depth")
     if depth == 1:
-        valid_threshold = 3
+        valid_threshold = 2
         expand_query_count = 1
     elif depth == 2:
-        valid_threshold = 5
+        valid_threshold = 3
         expand_query_count = 2
     elif depth == 3:
-        valid_threshold = 5
+        valid_threshold = 3
         expand_query_count = 3
     elif depth == 4:
         valid_threshold = 5
-        expand_query_count = 5
+        expand_query_count = 4
     elif depth == 5:
-        valid_threshold = 10
+        valid_threshold = 8
         expand_query_count = 5
     else:
         valid_threshold = 5
@@ -92,12 +99,75 @@ def format_input(input):
 
 
 def expand_prompt(_, input_data):
-    prompt = EXPAND_QUERY_PROMPT.format(
+    if input_data["language"] == "zh-CN":
+        template = EXPAND_QUERY_PROMPT_ZH
+    else:
+        template = EXPAND_QUERY_PROMPT
+
+    prompt = template.format(
         query=input_data["query"],
         expand_query_count=input_data["expand_query_count"],
         language=input_data["language"],
     )
     return prompt
+
+
+def count_words(text: str) -> int:
+    """计算文本中的“字数”：英文以空格分隔，中文每个字符算一个字。"""
+    words = text.split()  # 按空白字符分割英文单词
+    chinese_chars = sum(
+        1 for char in text if "\u4e00" <= char <= "\u9fff"
+    )  # 统计中文字符
+    return len(words) + chinese_chars
+
+
+def chunk_content(content: str, min_words: int = 50):
+    """
+    将文本内容分割成满足最小字数要求的段落块。
+
+    Args:
+        content (str): 输入的文本内容。
+        min_words (int): 每个块所需的最小“字数”（默认为300）。
+
+    Returns:
+        List[str]: 满足条件的文本块列表。
+    """
+
+    # 按行分割内容
+    segments = content.split("\n")
+    segments = [seg.strip() for seg in segments if seg.strip()]  # 去除空白行和首尾空格
+
+    if not segments:
+        return []
+
+    result = []
+    current_chunk = ""
+    current_word_count = 0
+
+    for segment in segments:
+        segment_word_count = count_words(segment)
+
+        # 如果当前块不为空且加入当前段落后超过或等于最小字数，则检查是否应该分割
+        if current_chunk and current_word_count >= min_words:
+            # 当前块已满足要求，先保存
+            result.append(current_chunk)
+            current_chunk = segment
+            current_word_count = segment_word_count
+        else:
+            # 否则合并到当前块
+            if current_chunk:
+                current_chunk += "\n" + segment
+                current_word_count += segment_word_count
+            else:
+                current_chunk = segment
+                current_word_count = segment_word_count
+
+    # 添加最后一个块（即使它小于min_words）
+    if current_chunk:
+        result.append(current_chunk)
+
+    return result
+
 
 def summary(input, input_data):
     language = input_data["language"]
@@ -116,14 +186,25 @@ def summary(input, input_data):
         return summary
     else:
         LOG.info("106- 翻译成中文")
-        prompt = TRANSLATE_PROMPT.format(context=summary)
-        transcript = lazyllm.OnlineChatModule(
-            source=agent_source,
-            model=agent_en_model,
-            stream=True,
-            enable_thinking=False,
-        )(prompt)
-        return summary + "\n\n" + transcript
+
+        # Split input by newlines
+        segments = chunk_content(summary, 500)
+        results = []
+
+        # Process each segment individually
+        for segment in segments:
+            if segment.strip():  # Only process non-empty segments
+                translate_segment = lazyllm.OnlineChatModule(
+                    source=agent_source,
+                    model=agent_en_model,
+                    stream=True,
+                    enable_thinking=False,
+                )(TRANSLATE_PROMPT.format(context=segment))
+                results.append(translate_segment)
+
+        # Combine results
+        combined_result = "\n".join(results)
+        return summary + "\n\n" + combined_result
 
 
 def build_research_agent(language):
@@ -136,9 +217,10 @@ def build_research_agent(language):
         ppl.expand_query = lazyllm.OnlineChatModule(
             source=agent_source, model=agent_model, enable_thinking=False, stream=True
         )
+
         ppl.transform_queries = transform_queries | bind(input_data=ppl.input_data)
 
-        ppl.paralle_process = lazyllm.warp(web_search, _concurrent=True)
+        ppl.paralle_process = lazyllm.warp(web_search, _concurrent=False)
 
         ppl.merge = merge_args
 
@@ -204,7 +286,7 @@ if __name__ == "__main__":
     # query = "伯尔尼本周有什么政治、宗教、治安方面的新闻，用英语"
     # query = "本月华盛顿有什么政治新闻，用英语"
     # query = "2025年8月，广州的天气情况"
-    query = "2025年市场上减肥药竞争格局"
+    query = "agentic ai 的原理、实现和优秀的开源库"
     # query = "电视剧 扫毒风暴 ，各个主演的评价分析"
     # query = "分析今年(2025)以来中国军队高层的腐败查处情况和重点下马人物"
 
