@@ -8,7 +8,7 @@ export HTTP_PROXY=""
 export HTTPS_PROXY=""
 export NO_PROXY=""
 
-BASE_PORT=${PORT:-10001}
+BASE_PORT=${PORT:-10010}
 function task_exe(){
     while [ 1 -eq 1 ]; do
         python3 "$@"

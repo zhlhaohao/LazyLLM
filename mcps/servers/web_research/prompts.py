@@ -54,7 +54,7 @@ Please follow these steps:
 
 Please write down your summary, including the views and corresponding key points. The summary should be well-organized. If the output content is relatively complex, appropriate numbering or classification can be carried out.
 
-**CRITICAL** YOU MUST Provide the URL list of all cited reference materials at the end of your output.
+**CRITICAL** YOU MUST Include Inline Links to All Cited References at the End of Output.
 """
 
 

@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import aiohttp
+import random
 import lazyllm
 from datetime import datetime
 from lazyllm import ModuleBase, fc_register, pipeline, OnlineChatModule, LOG
@@ -56,10 +57,16 @@ class CrawlPages(ModuleBase):
         super().__init__(return_trace=return_trace)
 
     def forward(self, page_url_list, relevant_content, valid_threshold, language):
-        result = asyncio.run(
-            crawl_many_pages(page_url_list, relevant_content, valid_threshold, language)
-        )
-        return result
+        try:
+            result = asyncio.run(
+                crawl_many_pages(
+                    page_url_list, relevant_content, valid_threshold, language
+                )
+            )
+            return result
+        except Exception as e:
+            LOG.error(f"67- CrawlPagesTool error: {e}")
+            return str(e)
 
 
 @fc_register("tool")
@@ -159,7 +166,7 @@ async def crawl_many_pages(
         content = "\n\n".join(iteration_contexts)
         return f"<FINAL_ANSWER>{content}"
     except Exception as e:
-        LOG.error(f"Crawl Pages error: {e}")
+        LOG.error(f"168- Crawl Pages error: {e}")
         return str(e)
 
 
@@ -179,10 +186,14 @@ def extract_relevant_context(query, page_text, page_url, language):
     if language != "zh-CN":
         model = agent_en_model
 
-    result = OnlineChatModule(
-        source=agent_source, model=model, stream=True, enable_thinking=False
-    )(prompt, llm_chat_history=[])
-    return result
+    try:
+        result = OnlineChatModule(
+            source=agent_source, model=model, stream=True, enable_thinking=False
+        )(prompt, llm_chat_history=[])
+        return result
+    except Exception as e:
+        LOG.error(e)
+        return str(e)
 
 
 def get_current_date_us_full():
@@ -207,8 +218,14 @@ curl -X POST http://10.119.101.21:9860/v1/scrape \
     Returns:
         _type_: _description_
     """
-    firecrawl_url = os.getenv("FIRECRAWL_URL", "")
+    urls = []
+    if os.getenv("FIRECRAWL_URL"):
+        urls.append(os.getenv("FIRECRAWL_URL"))
+    if os.getenv("FIRECRAWL_URL_1"):
+        urls.append(os.getenv("FIRECRAWL_URL_1"))
 
+    firecrawl_url = random.choice(urls)
+    LOG.info(f"firecrawl_url: {firecrawl_url}")
     full_url = f"{firecrawl_url}v1/scrape"
 
     headers = {
@@ -253,7 +270,7 @@ curl -X POST http://10.119.101.21:9860/v1/scrape \
                     return None
     except Exception as e:
         LOG.error(f"210-爬取网页失败:{page_url}:{e}")
-        return None
+        return str(e)
 
 
 def log(msg):

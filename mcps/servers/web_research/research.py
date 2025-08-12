@@ -41,23 +41,27 @@ def extract_between_braces(text):
         return text
 
 def transform_queries(expanded_queries, input_data):
-    obj = json.loads(extract_between_braces(expanded_queries))
+    try:
+        obj = json.loads(extract_between_braces(expanded_queries))
 
-    result = [
-        json.dumps(
-            {
-                "query": query,
-                "relevant_content": obj["translated_query"],
-                "language": input_data["language"],
-                "valid_threshold": input_data["valid_threshold"],
-            },
-            ensure_ascii=False,
-        )
-        for query in obj["queries"]
-    ]
+        result = [
+            json.dumps(
+                {
+                    "query": query,
+                    "relevant_content": obj["translated_query"],
+                    "language": input_data["language"],
+                    "valid_threshold": input_data["valid_threshold"],
+                },
+                ensure_ascii=False,
+            )
+            for query in obj["queries"]
+        ]
 
-    LOG.info(f"59- web_search_queries:{result}")
-    return result
+        LOG.info(f"59- web_search_queries:{result}")
+        return result
+    except Exception as ex:
+        LOG.error(f"63- Error: {ex}")
+        raise ex
 
 
 def web_search(query):
@@ -66,7 +70,7 @@ def web_search(query):
         return agent.start()(query)
     except Exception as e:
         LOG.error(e)
-        return "出现错误，无相关新闻资料返回"
+        return "出现错误，无相关资料返回"
 
 
 def format_input(input):
@@ -90,6 +94,7 @@ def format_input(input):
     else:
         valid_threshold = 5
         expand_query_count = 3
+
     return {
         "query": data["query"],
         "language": data["language"],
@@ -180,7 +185,7 @@ def summary(input, input_data):
         stream=True,
     ).prompt(ChatPrompter(instruction=SUMMARY_PROMPT))(input)
 
-    LOG.info(f"113- 总结输出\n\n{summary}")
+    LOG.info(f"113- 总结已生成:\n\n{summary}")
 
     if language == "zh-CN":
         return summary
@@ -202,7 +207,6 @@ def summary(input, input_data):
                 )(TRANSLATE_PROMPT.format(context=segment))
                 results.append(translate_segment)
 
-        # Combine results
         combined_result = "\n".join(results)
         return summary + "\n\n" + combined_result
 
@@ -224,31 +228,30 @@ def build_research_agent(language):
 
         ppl.merge = merge_args
 
-        # ppl.summary = lazyllm.OnlineChatModule(
-        #     source=agent_source,
-        #     model=agent_model if language == "zh-CN" else agent_en_model,
-        #     enable_thinking=False,
-        #     stream=True,
-        # ).prompt(ChatPrompter(instruction=SUMMARY_PROMPT))
-
         ppl.summary = summary | bind(input_data=ppl.input_data)
 
     return ppl
 
 
 async def web_research(
-    query: Annotated[str, Field(description="user's query, do not change")],
+    query: Annotated[str, Field(description="user's query")],
     language: Annotated[
-        str, Field(description="language code of research, default to zh-CN")
+        str, Field(description="language code of web search, default to zh-CN")
     ] = "zh-CN",
-    depth: Annotated[int, Field(description="depth of research, default to 3")] = 3,
+    depth: Annotated[
+        int, Field(description="depth of research, from 1 through 5, default to 3")
+    ] = 3,
     ctx: Context = None,
 ) -> str:
     """
     search the web and do research works to answer user's query
     """
     main_ppl = build_research_agent(language)
-    with lazyllm.ThreadPoolExecutor(1) as executor:
+    with lazyllm.ThreadPoolExecutor(50) as executor:
+        # 在submit执行的时候，获取协程或者线程id，初始化了_sid,这个sid就是FileSystemQueue的用于会话隔离的id值
+        # 如果执行到这里的时候是处于协程模式下，那么只有同一个协程的代码才能共享消息队列
+        # 如果执行到这里的时候是处于线程模式下，那么只有同一个线程的代码才能共享消息队列 --- 经实测，是线程模式
+        # 由于__sid的值是ContextVar,可以通过线程复制给子协程，所以所有子协程都可以共享一个队列
         future = executor.submit(
             main_ppl,
             json.dumps(
@@ -261,12 +264,17 @@ async def web_research(
             if value := lazyllm.FileSystemQueue().dequeue():
                 buffer += "".join(value)
                 await ctx.sample("llm:" + buffer)
+
+            elif value := lazyllm.FileSystemQueue.get_instance("lazy_error").dequeue():
+                LOG.error("".join(value))
+
             elif (
                 value := lazyllm.FileSystemQueue().get_instance("lazy_trace").dequeue()
             ):
                 msg = "".join(value)
                 await ctx.sample(f"trace:{msg}")
                 LOG.info(f"\n\ntrace:\n{msg}")
+
             elif future.done():
                 break
 
@@ -280,7 +288,7 @@ if __name__ == "__main__":
     # prompter = AlpacaPrompter(instruction=expand_query_prompt)
     # res = prompter.generate_prompt("台湾基隆潮境公园有哪些餐厅，用繁体中文")
     # print(res)
-    language = "en"
+    language = "zh-CN"
 
     # query = "美元利息与黄金价格走势的关系"
     # query = "伯尔尼本周有什么政治、宗教、治安方面的新闻，用英语"
@@ -295,7 +303,7 @@ if __name__ == "__main__":
     #
 
     query_json = json.dumps(
-        {"query": query, "language": language, "depth": 1}, ensure_ascii=False
+        {"query": query, "language": language, "depth": 2}, ensure_ascii=False
     )
     main_ppl = build_research_agent(language)
 
