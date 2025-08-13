@@ -16,5 +16,5 @@ if __name__ == "__main__":
     port = args.port if args.port else int(os.environ.get("PORT"))
 
     create_server().run(
-        transport="streamable-http", host="0.0.0.0", port=10005, path="/mcp-server"
+        transport="streamable-http", host="0.0.0.0", port=port, path="/mcp-server"
     )

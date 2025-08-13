@@ -48,7 +48,9 @@ def transform_queries(expanded_queries, input_data):
             json.dumps(
                 {
                     "query": query,
-                    "relevant_content": obj["translated_query"],
+                    "relevant_content": obj["translated_query"]
+                    if input_data["language"] != "zh-CN"
+                    else input_data["query"],
                     "language": input_data["language"],
                     "valid_threshold": input_data["valid_threshold"],
                 },
@@ -57,7 +59,7 @@ def transform_queries(expanded_queries, input_data):
             for query in obj["queries"]
         ]
 
-        LOG.info(f"59- web_search_queries:{result}")
+        LOG.info(f"59- 扩充到多个关联查询:{result}")
         return result
     except Exception as ex:
         LOG.error(f"63- Error: {ex}")
@@ -212,22 +214,21 @@ def summary(input, input_data):
 
 
 def build_research_agent(language):
+    web_search = build_web_search_agent()
+
     with pipeline() as ppl:
         ppl.input_data = format_input
         # ppl.log2 = log
 
         ppl.expand_prompt = expand_prompt | bind(input_data=ppl.input_data)
-
         ppl.expand_query = lazyllm.OnlineChatModule(
             source=agent_source, model=agent_model, enable_thinking=False, stream=True
         )
-
         ppl.transform_queries = transform_queries | bind(input_data=ppl.input_data)
-
-        ppl.paralle_process = lazyllm.warp(web_search, _concurrent=False)
-
+        ppl.web_search = lazyllm.warp(
+            web_search, _concurrent=False
+        )  # 关闭多线程并发，确保有trace结果流式输出
         ppl.merge = merge_args
-
         ppl.summary = summary | bind(input_data=ppl.input_data)
 
     return ppl
@@ -259,21 +260,21 @@ async def web_research(
                 ensure_ascii=False,
             ),
         )
-        buffer = ""
+
+        llm_log = ""
+        trace_log = ""
         while True:
             if value := lazyllm.FileSystemQueue().dequeue():
-                buffer += "".join(value)
-                await ctx.sample("llm:" + buffer)
-
-            elif value := lazyllm.FileSystemQueue.get_instance("lazy_error").dequeue():
-                LOG.error("".join(value))
+                trace_log = ""
+                llm_log += "".join(value)
+                await ctx.sample("/log:" + llm_log)
 
             elif (
                 value := lazyllm.FileSystemQueue().get_instance("lazy_trace").dequeue()
             ):
-                msg = "".join(value)
-                await ctx.sample(f"trace:{msg}")
-                LOG.info(f"\n\ntrace:\n{msg}")
+                llm_log = ""
+                trace_log = "".join(value)
+                await ctx.sample(f"/log:{trace_log}")
 
             elif future.done():
                 break
@@ -308,30 +309,30 @@ if __name__ == "__main__":
     main_ppl = build_research_agent(language)
 
     # 命令行界面
-    ans = ActionModule(main_ppl).start()(
-        query_json,
-    )
-    print(f"最终回答:\n{ans}")
+    # ans = ActionModule(main_ppl).start()(
+    #     query_json,
+    # )
+    # print(f"最终回答:\n{ans}")
 
-    # with lazyllm.ThreadPoolExecutor(1) as executor:
-    #     future = executor.submit(
-    #         main_ppl,
-    #         query_json,
-    #     )
-    #     buffer = ""
-    #     while True:
-    #         if value := lazyllm.FileSystemQueue().dequeue():
-    #             buffer += "".join(value)
-    #             print("llm:" + buffer)
-    #         elif (
-    #             value := lazyllm.FileSystemQueue().get_instance("lazy_trace").dequeue()
-    #         ):
-    #             msg = "".join(value)
-    #             print(f"trace:{msg}")
-    #             LOG.info(f"\n\ntrace:\n{msg}")
-    #         elif future.done():
-    #             break
+    with lazyllm.ThreadPoolExecutor(10) as executor:
+        future = executor.submit(
+            main_ppl,
+            query_json,
+        )
 
-    #     answer = future.result()
-    #     LOG.info(f"\n\n最终回答:\n\n{answer}")
-    #     print(f"<FINAL_ANSWER>{answer}")
+        buffer = ""
+        while True:
+            if value := lazyllm.FileSystemQueue().dequeue():
+                buffer += "".join(value)
+                # print("llm:" + buffer)
+            elif (
+                value := lazyllm.FileSystemQueue().get_instance("lazy_trace").dequeue()
+            ):
+                msg = "".join(value)
+                LOG.info(f"lazy_trace:\n{msg}")
+            elif future.done():
+                break
+
+        answer = future.result()
+        LOG.info(f"\n\n最终回答:\n\n{answer}")
+        print(f"<FINAL_ANSWER>{answer}")

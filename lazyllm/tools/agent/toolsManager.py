@@ -51,7 +51,8 @@ def _check_return_type_is_the_same(doc_type_hints, func_type_hints) -> None:
 # ---------------------------------------------------------------------------- #
 
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
-    def __init__(self, verbose: bool = False, return_trace: bool = True):
+    # F8080 -- lazyllm会将FuncTool包装为Module,在这里将return_trace=False以关闭func_tool的trace信息（不trace函数返回值）
+    def __init__(self, verbose: bool = False, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._verbose = verbose
         self._name = self.apply.__name__\
@@ -313,7 +314,8 @@ class ToolManager(ModuleBase):
         flag_val = [True if self._validate_tool(tool['name'], tool['arguments']) else False for tool in tool_calls]
         tool_inputs = [tool_calls[idx]['arguments'] for idx, val in enumerate(flag_val) if val]
         tools = [self._tool_call[tool_calls[idx]['name']] for idx, val in enumerate(flag_val) if val]
-        tool_diverter = lazyllm.diverter(tuple(tools))
+        # F8080 关闭toolcall的多线程并发，确保_sid与主会话线程的_sid一致，解决Tool Function内部无法流式输出的问题
+        tool_diverter = lazyllm.diverter.sequential(tuple(tools))
         rets = tool_diverter(tuple(tool_inputs))
         res = iter(rets)
         rets = [next(res) if ele else None for ele in flag_val]

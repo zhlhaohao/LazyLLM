@@ -39,7 +39,13 @@ def WebSearchTool(query: str, language: str = "zh-CN", time_range: str = ""):
                 async with session.get(url) as response:
                     results = (await response.json())["results"]
                     links = [result["url"] for result in results[:search_max_results]]
-                    LOG.debug(f"searxng_search results:{results}")
+                    for result in results[:search_max_results]:
+                        msg = f"{result['engine']} - {result['title']} - {result['url']}\n"
+
+                        # lazy-trace 检索出的网站
+                        lazyllm.FileSystemQueue.get_instance("lazy_trace").enqueue(msg)
+                        LOG.debug(f"搜索链接:{msg}")
+
         except Exception as e:
             LOG.error(f"Web search error: {e}")
 
@@ -48,25 +54,46 @@ def WebSearchTool(query: str, language: str = "zh-CN", time_range: str = ""):
     return asyncio.run(worker(query, language, time_range))
 
 
-class CrawlPages(ModuleBase):
-    """
-    主要是为了测试reture_trace=True的情况，在作为工具被调用的情况下，由于线程id，无法实现在主程序中被捕获,还需要继续研究源码
-    """
+# class CrawlPages(ModuleBase):
+#     """
+#     主要是为了测试reture_trace=True的情况，在作为工具被调用的情况下，由于线程id，无法实现在主程序中被捕获,还需要继续研究源码
+#     """
 
-    def __init__(self, return_trace: bool = False):
-        super().__init__(return_trace=return_trace)
+#     def __init__(self, return_trace: bool = False):
+#         super().__init__(return_trace=return_trace)
 
-    def forward(self, page_url_list, relevant_content, valid_threshold, language):
-        try:
-            result = asyncio.run(
-                crawl_many_pages(
-                    page_url_list, relevant_content, valid_threshold, language
-                )
-            )
-            return result
-        except Exception as e:
-            LOG.error(f"67- CrawlPagesTool error: {e}")
-            return str(e)
+#     def forward(self, page_url_list, relevant_content, valid_threshold, language):
+#         try:
+#             result = asyncio.run(
+#                 crawl_many_pages(
+#                     page_url_list, relevant_content, valid_threshold, language
+#                 )
+#             )
+#             return result
+#         except Exception as e:
+#             LOG.error(f"67- CrawlPagesTool error: {str(e)}")
+#             return str(e)
+
+
+# @fc_register("tool")
+# def CrawlPagesTool(
+#     page_url_list: List[str],
+#     relevant_content: str,
+#     valid_threshold: int = 5,
+#     language: str = "zh-CN",
+# ):
+#     """
+#     Worker that crawl web page contents. Input should be a list of page url.
+
+#     Args:
+#         page_url_list (List[str]): list of page url to crawl.
+#         relevant_content (str): relevant_content.
+#         valid_threshold (int): valid threshold
+#         language (str, optional): language code of the query.
+#     """
+#     return CrawlPages(return_trace=False)(
+#         page_url_list, relevant_content, valid_threshold, language
+#     )
 
 
 @fc_register("tool")
@@ -82,32 +109,13 @@ def CrawlPagesTool(
     Args:
         page_url_list (List[str]): list of page url to crawl.
         relevant_content (str): relevant_content.
-        valid_threshold (int): valid threshold
+        valid_threshold (int): valid threshold.
         language (str, optional): language code of the query.
     """
-    return CrawlPages(return_trace=True)(
-        page_url_list, relevant_content, valid_threshold, language
+    result = asyncio.run(
+        crawl_many_pages(page_url_list, relevant_content, valid_threshold, language)
     )
-
-
-# @fc_register("tool")
-# def CrawlPagesTool(
-#     page_url_list: List[str], relevant_content: str, valid_threshold: int = 5
-# ):
-#     """
-#     Worker that crawl web page contents. Input should be a list of page url.
-
-#     Args:
-#         page_url_list (List[str]): original page_url_list from web search tool.
-#         relevant_content (str): relevant_content.
-#         valid_threshold (int): valid threshold
-#     """
-#     # print(f"\n\n66- user_ask:\n\n{user_ask}")
-#     result = asyncio.run(
-#         crawl_many_pages(page_url_list, relevant_content, valid_threshold)
-#     )
-#     # print(f"120- 爬取网页内容:\n{result}")
-#     return result
+    return result
 
 
 async def crawl_many_pages(
@@ -177,7 +185,7 @@ MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", 2000))
 def extract_relevant_context(query, page_text, page_url, language):
     prompt = EXTRACT_PROMPT.format(
         query=query,
-        page_text=page_text,
+        page_text=page_text[:20000],
         context_length=MAX_CONTEXT_LENGTH,
         current_date=get_current_date_us_full(),
         page_url=page_url,
@@ -249,17 +257,16 @@ curl -X POST http://10.119.101.21:9860/v1/scrape \
                     result = json.loads(resp)
                     content = result.get("data").get("markdown")
                     # 提取网页中与问题相关的片段
-                    LOG.info(f"235- extract_page:{page_url}")
-
+                    LOG.info(f"235- 抽取网页:{page_url}")
                     summary = extract_relevant_context(
                         relevant_content, content, page_url, language
                     )
                     result = f"# {page_url} content:\n{summary}"
 
                     if result and "Web content is irrelevant" not in result:
-                        LOG.info(f"239- 抽取网页结果:{page_url} 有{len(result)}字")
+                        LOG.info(f"239- 网页内容 :{page_url}:有{len(result)}字")
                     else:
-                        LOG.info(f"247- 抽取网页结果:{page_url} 内容与查询无关")
+                        LOG.info(f"247- 网页内容:{page_url}:无有效内容")
 
                     return result
                 else:
@@ -269,7 +276,7 @@ curl -X POST http://10.119.101.21:9860/v1/scrape \
                     )
                     return None
     except Exception as e:
-        LOG.error(f"210-爬取网页失败:{page_url}:{e}")
+        LOG.error(f"210-爬取网页失败:{page_url}:{str(e)}")
         return str(e)
 
 
@@ -279,7 +286,7 @@ def log(msg):
 
 def build_web_search_agent():
     with pipeline() as ppl:
-        ppl.log = log
+        # ppl.log = log
         # 将query扩充为任务描述
         ppl.format = lambda query: AGENT_PROMPT.format(query=query)
 
@@ -288,11 +295,11 @@ def build_web_search_agent():
                 source=agent_source,
                 model=agent_model,
                 enable_thinking=False,
+                return_trace=False,
                 stream=True,
-                return_trace=True,
             ),
             tools=["WebSearchTool", "CrawlPagesTool"],
-            return_trace=True,
+            return_trace=False,
             max_retries=10,
         )
 
