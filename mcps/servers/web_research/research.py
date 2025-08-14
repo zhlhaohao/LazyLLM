@@ -185,6 +185,7 @@ def summary(input, input_data):
         model=agent_model if language == "zh-CN" else agent_en_model,
         enable_thinking=False,
         stream=True,
+        static_params={"temperature": 0.6, "max_tokens": 30000},
     ).prompt(ChatPrompter(instruction=SUMMARY_PROMPT))(input)
 
     LOG.info(f"113- 总结已生成:\n\n{summary}")
@@ -214,7 +215,7 @@ def summary(input, input_data):
 
 
 def build_research_agent(language):
-    web_search = build_web_search_agent()
+    # web_search = build_web_search_agent()
 
     with pipeline() as ppl:
         ppl.input_data = format_input
@@ -295,7 +296,7 @@ if __name__ == "__main__":
     # query = "伯尔尼本周有什么政治、宗教、治安方面的新闻，用英语"
     # query = "本月华盛顿有什么政治新闻，用英语"
     # query = "2025年8月，广州的天气情况"
-    query = "agentic ai 的原理、实现和优秀的开源库"
+    query = "请分析并详细解释crewai和lazyllm 框架，然后进行各个方面的比较"
     # query = "电视剧 扫毒风暴 ，各个主演的评价分析"
     # query = "分析今年(2025)以来中国军队高层的腐败查处情况和重点下马人物"
 

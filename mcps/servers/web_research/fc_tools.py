@@ -10,6 +10,10 @@ from lazyllm.tools.agent import ToolAgent
 from typing import List
 from .prompts import AGENT_PROMPT, EXTRACT_PROMPT
 from urllib.parse import quote
+import concurrent.futures
+
+# Create a thread pool (you can define this at module level or class level)
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
 
 agent_source = os.environ.get("AGENT_SOURCE", "qwen")
 agent_model = os.environ.get("AGENT_MODEL", "qwen3-32b")
@@ -233,7 +237,7 @@ curl -X POST http://10.119.101.21:9860/v1/scrape \
         urls.append(os.getenv("FIRECRAWL_URL_1"))
 
     firecrawl_url = random.choice(urls)
-    LOG.info(f"firecrawl_url: {firecrawl_url}")
+    # LOG.info(f"firecrawl_url: {firecrawl_url}")
     full_url = f"{firecrawl_url}v1/scrape"
 
     headers = {
@@ -254,26 +258,38 @@ curl -X POST http://10.119.101.21:9860/v1/scrape \
                 LOG.info(f"爬取结束{page_url}")
                 if resp.status == 200:
                     resp = await resp.text()
-                    result = json.loads(resp)
-                    content = result.get("data").get("markdown")
-                    # 提取网页中与问题相关的片段
+                    data = json.loads(resp).get("data")
+                    content = data.get("markdown")
                     LOG.info(f"235- 抽取网页:{page_url}")
-                    summary = extract_relevant_context(
-                        relevant_content, content, page_url, language
-                    )
-                    result = f"# {page_url} content:\n{summary}"
 
-                    if result and "Web content is irrelevant" not in result:
-                        LOG.info(f"239- 网页内容 :{page_url}:有{len(result)}字")
+                    summary = await asyncio.get_event_loop().run_in_executor(
+                        executor,
+                        extract_relevant_context,
+                        relevant_content,
+                        content,
+                        page_url,
+                        language,
+                    )
+
+                    if (
+                        summary
+                        and isinstance(summary, str)
+                        and "Web content is irrelevant" not in summary
+                    ):
+                        LOG.info(f"239- 网页内容 :{page_url}:有{len(summary)}字")
+                        result = f"# [{data.get('metadata').get('title', page_url)}]({page_url}) Content:\n\n{summary}"
+
+                        # 清空trace队列然后写入网页摘要
+                        queue = lazyllm.FileSystemQueue.get_instance("lazy_trace")
+                        queue.clear()
+                        queue.enqueue(result)
+                        return result
                     else:
                         LOG.info(f"247- 网页内容:{page_url}:无有效内容")
-
-                    return result
+                        return ""
                 else:
                     text = await resp.text()
-                    LOG.info(
-                        f"204-Error fetching webpage text with Firecrawl: {resp.status} - {text}"
-                    )
+                    LOG.info(f"292--爬取网页失败:{page_url}:{resp.status} - {text}")
                     return None
     except Exception as e:
         LOG.error(f"210-爬取网页失败:{page_url}:{str(e)}")
