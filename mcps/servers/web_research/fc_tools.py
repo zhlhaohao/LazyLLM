@@ -4,13 +4,13 @@ import os
 import aiohttp
 import random
 import lazyllm
-from datetime import datetime
 from lazyllm import ModuleBase, fc_register, pipeline, OnlineChatModule, LOG
 from lazyllm.tools.agent import ToolAgent
 from typing import List
 from .prompts import AGENT_PROMPT, EXTRACT_PROMPT
 from urllib.parse import quote
 import concurrent.futures
+from .util import get_current_date_us_full
 
 # Create a thread pool (you can define this at module level or class level)
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
@@ -208,9 +208,6 @@ def extract_relevant_context(query, page_text, page_url, language):
         return str(e)
 
 
-def get_current_date_us_full():
-    today = datetime.now()
-    return today.strftime("%B %d, %Y")
 
 
 async def crawl_single_page(page_url: str, relevant_content: str, language: str):
@@ -261,6 +258,7 @@ curl -X POST http://10.119.101.21:9860/v1/scrape \
                     data = json.loads(resp).get("data")
                     content = data.get("markdown")
                     LOG.info(f"235- 抽取网页:{page_url}")
+                    LOG.debug(f"264- 网页内容:{page_url}:\n\n{content}")
 
                     summary = await asyncio.get_event_loop().run_in_executor(
                         executor,

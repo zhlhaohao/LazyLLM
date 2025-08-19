@@ -13,8 +13,8 @@
 9. 参考 rag_online.py 的写法，
 10. 研究 flow.py 中的组件，适当使用 Pipeline \ Parallel \ Loop 等组件完成流程逻辑[DEEP RESEARCH][CODE MODE]
 """
-
-from lazyllm import ModuleBase, OnlineChatModule
+import lazyllm
+from lazyllm import ModuleBase, OnlineChatModule, LOG
 from lazyllm.flow import (
     Pipeline,
     Loop,
@@ -83,9 +83,32 @@ class DeepResearchAgent(ModuleBase):
 qwen_model = OnlineChatModule(source="qwen")
 
 # 创建深度研究Agent
-deep_research_agent = DeepResearchAgent(qwen_model)
+# def deep_research_agent():
+#     try:
+#         return DeepResearchAgent(qwen_model).start()()
+#     except Exception as e:
+#         LOG.error(e)
+#         return "出现错误，无相关资料返回"
 
-# 执行深度研究流程
-result = deep_research_agent()
 
-print("最终研究结果：", result)
+# # 执行深度研究流程
+# result = deep_research_agent()
+# print("最终研究结果：", result)
+
+with lazyllm.ThreadPoolExecutor(1) as executor:
+    future = executor.submit(DeepResearchAgent(qwen_model))
+
+    buffer = ""
+    while True:
+        if value := lazyllm.FileSystemQueue().dequeue():
+            buffer += "".join(value)
+            print("llm:" + buffer)
+        elif value := lazyllm.FileSystemQueue().get_instance("lazy_trace").dequeue():
+            msg = "".join(value)
+            LOG.info(f"lazy_trace:\n{msg}")
+        elif future.done():
+            break
+
+    answer = future.result()
+    LOG.info(f"\n\n最终回答:\n\n{answer}")
+    print(f"<FINAL_ANSWER>{answer}")

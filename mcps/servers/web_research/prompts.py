@@ -151,5 +151,60 @@ TRANSLATE_PROMPT = """You are a translator, translate any given language into Ch
 
 <end_of_sentence>
 
-**CRITICAL**: DO NOT OUTPUT EXTRA WORDS EXCEPT the translated sentence.
+**CRITICAL**:
+1. DO NOT OUTPUT EXTRA WORDS EXCEPT the translated sentence
+2. KEEP Markdown Markers Untouched, for example: heading delimiters such as ##
+"""
+
+
+KEYPOINT_PROMPT = """Your task is to carefully read the context and summarize the views and key points expressed in it.
+
+<context>
+{input}
+</context>
+
+Please follow these steps:
+
+1. Read the entire context to understand the overall content and main idea.
+2. Identify no more than six explicitly stated views in the context, which may be the author's directly elaborated positions, claims, or conclusions.
+3. Extract no more than three key points corresponding to each view. The key points can be specific facts, data, examples, or other arguments that support the view.
+
+CRITICAL: You must answer in this JSON format,DO NOT wrap your response in any kind of fences
+EXAMPLE JSON OUTPUT:
+{{
+    "views": [
+        "key_points": [
+            "key point 1",
+            "key point 2"
+        ]
+    ],
+}}
+"""
+
+
+KEYPOINT_SUMMARY_PROMPT = """You are a professional information extraction expert. Extract and summarize from the context that is relevant to the key point below, max 1000 words, without adding any comments.
+
+<key_point>
+{key_point}
+<key_point>
+
+<instruction>
+- Write content in continuous paragraphs using varied sentence lengths for engaging prose; avoid list formatting
+- Use prose and paragraphs by default; only employ lists when explicitly requested by users
+- All writing must be highly detailed with a minimum length of one thousand words, unless user explicitly specifies length or format requirements
+</instruction>
+
+**CRITICAL** YOU MUST Include Inline Links to All Cited References In the Output Content.
+
+<context>
+{context}
+</context>
+"""
+
+
+LANGUAGE_PROMPT = """
+Find the Language of the following text
+**CRITICAL**: DO NOT OUTPUT EXTRA WORDS EXCEPT Language Code
+
+{context}
 """
