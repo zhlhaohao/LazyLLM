@@ -143,17 +143,14 @@ You are a professional information extraction expert. Extract and summarize rele
 
 """
 
-TRANSLATE_PROMPT = """You are a translator, translate any given language into Chinese. avoid a translated tone; instead, aim for natural, fluent, and authentic expressions:
-
-<start_of_sentence>
-
-{context}
-
-<end_of_sentence>
-
+TRANSLATE_PROMPT = """You are a translator, translate any given language into Chinese. avoid a translated tone; instead, aim for natural, fluent, and authentic expressions.
 **CRITICAL**:
 1. DO NOT OUTPUT EXTRA WORDS EXCEPT the translated sentence
 2. KEEP Markdown Markers Untouched, for example: heading delimiters such as ##
+
+Sentence to be translated:
+
+{context}
 """
 
 

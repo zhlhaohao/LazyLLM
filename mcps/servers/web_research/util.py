@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+import lazyllm
 
 def count_words(text: str) -> int:
     """计算文本中的“字数”：英文以空格分隔，中文每个字符算一个字。"""
@@ -99,3 +100,30 @@ def extract_between_braces(text):
 def get_current_date_us_full():
     today = datetime.now()
     return today.strftime("%B %d, %Y")
+
+
+def contains_chinese(text: str) -> bool:
+    """
+    Detect if a string contains UTF-8 Chinese characters.
+
+    Args:
+        text (str): The string to check for Chinese characters.
+
+    Returns:
+        bool: True if the string contains Chinese characters, False otherwise.
+    """
+    if not isinstance(text, str):
+        return False
+
+    for char in text:
+        # Check if character is in the range of Chinese Unicode blocks
+        if "\u4e00" <= char <= "\u9fff":
+            return True
+    return False
+
+
+def lazy_trace(msg, is_clear=False):
+    queue = lazyllm.FileSystemQueue.get_instance("lazy_trace")
+    if is_clear:
+        queue.clear()
+    queue.enqueue(msg)

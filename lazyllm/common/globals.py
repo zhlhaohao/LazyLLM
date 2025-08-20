@@ -122,7 +122,13 @@ class ThreadSafeDict(dict):
 class Globals(object):
     # 这个结构记录每一个sid会话的自身的数据
     __global_attrs__ = ThreadSafeDict(
-        chat_history={}, global_parameters={}, bind_args={}, tool_delimiter="<|tool_calls|>", lazyllm_files={}, usage={}
+        chat_history={},
+        global_parameters={},
+        bind_args={},
+        tool_delimiter="<|tool_calls|>",
+        lazyllm_files={},
+        usage={},
+        memory={},
     )
 
     def __init__(self):

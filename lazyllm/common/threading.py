@@ -33,7 +33,9 @@ class Thread(threading.Thread):
 
 class ThreadPoolExecutor(TPE):
     """
-    继承ThreadPoolExecutor的自定义线程池，主要区别是：在submit()的时候，初始化了sid全局变量
+    继承ThreadPoolExecutor的自定义线程池
+    第1次调用submit()：初始化了本线程的sid全局变量
+    第2次调用submit()：将sid作为参数传递给新线程,确保新线程的sid与本线程的sid一致
     """
     def submit(self, fn, /, *args, **kwargs):
         # 定义一个内部函数impl，用于包装原始函数fn

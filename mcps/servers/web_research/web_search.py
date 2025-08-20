@@ -4,13 +4,13 @@ import os
 import aiohttp
 import random
 import lazyllm
-from lazyllm import ModuleBase, fc_register, pipeline, OnlineChatModule, LOG
+from lazyllm import ModuleBase, fc_register, pipeline, OnlineChatModule, globals, LOG
 from lazyllm.tools.agent import ToolAgent
 from typing import List
 from .prompts import AGENT_PROMPT, EXTRACT_PROMPT
 from urllib.parse import quote
 import concurrent.futures
-from .util import get_current_date_us_full
+from .util import get_current_date_us_full, contains_chinese, lazy_trace
 
 # Create a thread pool (you can define this at module level or class level)
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
@@ -43,11 +43,24 @@ def WebSearchTool(query: str, language: str = "zh-CN", time_range: str = ""):
                 async with session.get(url) as response:
                     results = (await response.json())["results"]
                     links = [result["url"] for result in results[:search_max_results]]
-                    for result in results[:search_max_results]:
-                        msg = f"{result['engine']} - {result['title']} - {result['url']}\n"
 
-                        # lazy-trace 检索出的网站
-                        lazyllm.FileSystemQueue.get_instance("lazy_trace").enqueue(msg)
+                    if language == "zh-CN":
+                        results = [
+                            result
+                            for result in results
+                            if result["title"] and contains_chinese(result["title"])
+                        ]
+                    else:
+                        results = [
+                            result
+                            for result in results
+                            if result["title"] and not contains_chinese(result["title"])
+                        ]
+
+
+                    for result in results[:search_max_results]:
+                        msg = f"{result['engine']} - {result['title']} - {result['url']}\n\n"
+                        lazy_trace(msg)
                         LOG.debug(f"搜索链接:{msg}")
 
         except Exception as e:
@@ -148,6 +161,10 @@ async def crawl_many_pages(
 
             # 获取当前批次的URL
             batch_urls = page_url_list[i : i + batch_size]
+            if "processed_urls" in globals["memory"]:
+                batch_urls = [
+                    url for url in batch_urls if url not in globals["memory"]["processed_urls"]
+                ]
 
             # 每个批次的任务间隔1秒启动
             async def delayed_task(index, link):
@@ -174,6 +191,16 @@ async def crawl_many_pages(
             # 更新已处理的项目数量
             processed_count = len(iteration_contexts)
             LOG.info(f"157- 共成功获取{processed_count}个相关网页内容")
+
+            if "processed_count" not in globals["memory"]:
+                globals["memory"]["processed_count"] = 0
+            globals["memory"]["processed_count"] += processed_count
+
+            lazy_trace(msg=f"已经下载分析完成{globals['memory']['processed_count']}个网页", is_clear=True)
+
+            if "processed_urls" not in globals["memory"]:
+                globals["memory"]["processed_urls"] = []
+            globals["memory"]["processed_urls"].extend(batch_urls)
 
         content = "\n\n".join(iteration_contexts)
         return f"<FINAL_ANSWER>{content}"
@@ -277,10 +304,7 @@ curl -X POST http://10.119.101.21:9860/v1/scrape \
                         LOG.info(f"239- 网页内容 :{page_url}:有{len(summary)}字")
                         result = f"# [{data.get('metadata').get('title', page_url)}]({page_url}) Content:\n\n{summary}"
 
-                        # 清空trace队列然后写入网页摘要
-                        queue = lazyllm.FileSystemQueue.get_instance("lazy_trace")
-                        queue.clear()
-                        queue.enqueue(result)
+                        lazy_trace(msg=result, is_clear=True)
                         return result
                     else:
                         LOG.info(f"247- 网页内容:{page_url}:无有效内容")
