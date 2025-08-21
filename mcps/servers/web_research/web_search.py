@@ -12,8 +12,15 @@ from urllib.parse import quote
 import concurrent.futures
 from .util import get_current_date_us_full, contains_chinese, lazy_trace
 
-# Create a thread pool (you can define this at module level or class level)
-executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
+MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", 2000))
+
+max_tokens = 4000
+if os.getenv("MAX_TOKENS"):
+    max_tokens = int(os.getenv("MAX_TOKENS"))
+
+
+llm_max_workers = int(os.environ.get("LLM_MAX_WORKERS", "4"))
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=llm_max_workers)
 
 agent_source = os.environ.get("AGENT_SOURCE", "qwen")
 agent_model = os.environ.get("AGENT_MODEL", "qwen3-32b")
@@ -59,7 +66,7 @@ def WebSearchTool(query: str, language: str = "zh-CN", time_range: str = ""):
 
 
                     for result in results[:search_max_results]:
-                        msg = f"{result['engine']} - {result['title']} - {result['url']}\n\n"
+                        msg = f"[{result['engine']} - {result['title']}]({result['url']})\n"
                         lazy_trace(msg)
                         LOG.debug(f"搜索链接:{msg}")
 
@@ -146,7 +153,6 @@ async def crawl_many_pages(
             batch_size = valid_threshold
 
         semaphore = asyncio.Semaphore(batch_size)
-        processed_count = 0  # 记录已处理的项目数量
         iteration_contexts = []
 
         async def process_link_with_sem(link):
@@ -156,15 +162,17 @@ async def crawl_many_pages(
         # 分批处理，每批batch_size个URL
         for i in range(0, len(page_url_list), batch_size):
             # 如果已处理的项目数量超过max_processed，则停止处理
-            if processed_count >= valid_threshold:
+            if len(iteration_contexts) >= valid_threshold:
                 break
 
             # 获取当前批次的URL
             batch_urls = page_url_list[i : i + batch_size]
-            if "processed_urls" in globals["memory"]:
-                batch_urls = [
-                    url for url in batch_urls if url not in globals["memory"]["processed_urls"]
-                ]
+            # 过滤掉已经爬取的URL
+            batch_urls = [
+                url
+                for url in batch_urls
+                if url not in globals["memory"]["processed_urls"]
+            ]
 
             # 每个批次的任务间隔1秒启动
             async def delayed_task(index, link):
@@ -183,23 +191,15 @@ async def crawl_many_pages(
                 res for res in batch_results if not isinstance(res, Exception)
             ]
 
-            # 处理当前批次的结果
             for res in batch_results:
                 if res and "Web content is irrelevant" not in res:
                     iteration_contexts.append(res)
+                    globals["memory"]["processed_count"] += 1
+                    lazy_trace(
+                        msg=f"**已经阅读{globals['memory']['processed_count']}个网站的观点**",
+                        is_clear=True,
+                    )
 
-            # 更新已处理的项目数量
-            processed_count = len(iteration_contexts)
-            LOG.info(f"157- 共成功获取{processed_count}个相关网页内容")
-
-            if "processed_count" not in globals["memory"]:
-                globals["memory"]["processed_count"] = 0
-            globals["memory"]["processed_count"] += processed_count
-
-            lazy_trace(msg=f"已经下载分析完成{globals['memory']['processed_count']}个网页", is_clear=True)
-
-            if "processed_urls" not in globals["memory"]:
-                globals["memory"]["processed_urls"] = []
             globals["memory"]["processed_urls"].extend(batch_urls)
 
         content = "\n\n".join(iteration_contexts)
@@ -207,9 +207,6 @@ async def crawl_many_pages(
     except Exception as e:
         LOG.error(f"168- Crawl Pages error: {e}")
         return str(e)
-
-
-MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", 2000))
 
 
 # 返回网页内容上与问题有关的片段
@@ -233,8 +230,6 @@ def extract_relevant_context(query, page_text, page_url, language):
     except Exception as e:
         LOG.error(e)
         return str(e)
-
-
 
 
 async def crawl_single_page(page_url: str, relevant_content: str, language: str):

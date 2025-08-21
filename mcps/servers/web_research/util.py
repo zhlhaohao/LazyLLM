@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+import time
 import lazyllm
 
 def count_words(text: str) -> int:
@@ -127,3 +128,35 @@ def lazy_trace(msg, is_clear=False):
     if is_clear:
         queue.clear()
     queue.enqueue(msg)
+
+
+def print_result_in_segments(content: str, segments: int = 5):
+    """
+    Split the result into specified number of segments and print each segment with 1-second interval
+    """
+    # Split the result into lines to avoid breaking words
+    lines = content.split("\n")
+
+    # Calculate approximate lines per segment
+    lines_per_segment = len(lines) // segments
+
+    for i in range(segments):
+        # Determine the start and end indices for this segment
+        start_idx = i * lines_per_segment
+        # For the last segment, include all remaining lines
+        end_idx = (i + 1) * lines_per_segment if i < segments - 1 else len(lines)
+
+        # Extract the segment
+        segment_lines = lines[start_idx:end_idx]
+        segment = "\n".join(segment_lines)
+
+        lazy_trace(segment)
+        if i < segments - 1:
+            time.sleep(1)
+
+
+def fake_report(msg):
+    content = read_file("report.md")
+    print_result_in_segments(content, 10)
+
+    return content

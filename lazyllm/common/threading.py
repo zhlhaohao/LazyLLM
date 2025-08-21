@@ -42,6 +42,7 @@ class ThreadPoolExecutor(TPE):
         def impl(sid, *a, **kw):
             # 初始化sid（会话ID）：首先尝试获取协程任务ID，如果失败则使用线程ID
             globals._init_sid(sid)
+            # print(f"globals._sid:{globals._sid}")
             # 调用原始函数fn，并传递参数
             return fn(*a, **kw)
 

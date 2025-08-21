@@ -1,11 +1,11 @@
 import os
 import lazyllm
 import json
-import asyncio
 import queue
 import threading
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
+from threading import Semaphore
 from .web_search import build_web_search_agent
 from lazyllm import pipeline, ActionModule, ChatPrompter, bind, globals, LOG
 from .prompts import (
@@ -20,13 +20,20 @@ from .prompts import (
 from typing import Annotated
 from fastmcp import Context
 from pydantic import Field
-from .web_search import agent_source, agent_model, agent_en_model
+from .web_search import (
+    agent_source,
+    agent_model,
+    agent_en_model,
+    llm_max_workers,
+    max_tokens,
+)
 from .util import (
     chunk_content,
     extract_between_braces,
     merge_args,
     read_file,
     lazy_trace,
+    fake_report,
 )
 
 def log(*args):
@@ -106,7 +113,10 @@ def expand_prompt(_, input_data):
     return prompt
 
 
-def translate_segment(segment):
+def translate_segment(segment, index):
+    if index > 0:  # 只有第1个线程才能输出
+        globals._init_sid()
+
     return lazyllm.OnlineChatModule(
         source=agent_source,
         model=agent_en_model,
@@ -115,7 +125,10 @@ def translate_segment(segment):
     )(TRANSLATE_PROMPT.format(context=segment))
 
 
-def summary_keypoint(key_point, context):
+def summary_keypoint(key_point, context, index):
+    if index > 0:  # 只有第1个线程才能输出
+        globals._init_sid()
+
     prompt = KEYPOINT_SUMMARY_PROMPT.format(context=context, key_point=key_point)
 
     ans = lazyllm.OnlineChatModule(
@@ -137,9 +150,9 @@ def translate_summary(summary):
         lazy_trace(msg="将原文报告翻译成中文", is_clear=True)
         LOG.info("106- 翻译成中文")
         results = []
-        with lazyllm.ThreadPoolExecutor(max_workers=4) as executor:
+        with lazyllm.ThreadPoolExecutor(max_workers=llm_max_workers) as executor:
             translate_futures = [
-                executor.submit(translate_segment, segment) for segment in segments
+                executor.submit(translate_segment, segment, index) for index, segment in enumerate(segments)
             ]
             for future in translate_futures:
                 ans = future.result()
@@ -149,11 +162,6 @@ def translate_summary(summary):
         return summary + "\n\n# 译文如下：\n\n" + translated
     else:
         return summary
-
-
-max_tokens = 4000
-if os.getenv("MAX_TOKENS"):
-    max_tokens = int(os.getenv("MAX_TOKENS"))
 
 
 def save_report(content):
@@ -230,7 +238,7 @@ def make_long_report(context):
 
         #     key_points = view.get("key_points", [])
         #     output.append(f"## {view_name}")
-        #     with ThreadPoolExecutor(max_workers=4) as executor:
+        #     with ThreadPoolExecutor(max_workers=llm_max_workers) as executor:
         #         futures = []
         #         for key_point in key_points:
         #             output.append(f"### {key_point}")
@@ -248,7 +256,7 @@ def make_long_report(context):
         #                 ans  # Fill in the placeholder with the actual result
         #             )
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with lazyllm.ThreadPoolExecutor(max_workers=llm_max_workers) as executor:
             futures = []
             for i, view in enumerate(views):
                 view_name = view.get(
@@ -257,8 +265,7 @@ def make_long_report(context):
                 )
 
                 output.append(f"## {i + 1}. {view_name}")
-                # Submit the summary_keypoint function to the thread pool
-                future = executor.submit(summary_keypoint, view_name, context)
+                future = executor.submit(summary_keypoint, view_name, context, i)
                 futures.append(
                     (future, len(output))
                 )  # Store future and its position in output list
@@ -292,24 +299,21 @@ def build_research_agent():
     深度研究主线程
     """
     with pipeline() as ppl:
+        # ppl.fake = fake_report
         ppl.input_data = format_input
-        # ppl.log2 = log
-
         ppl.expand_prompt = expand_prompt | bind(input_data=ppl.input_data)
         ppl.expand_query = lazyllm.OnlineChatModule(
             source=agent_source, model=agent_model, enable_thinking=False, stream=True
         )
         ppl.transform_queries = transform_queries | bind(input_data=ppl.input_data)
-        ppl.web_search = lazyllm.warp(
-            web_search, _concurrent=False
-        )  # 关闭多线程并发，确保有trace结果流式输出
+        ppl.web_search = lazyllm.warp(web_search, _concurrent=False)
         ppl.merge = merge_args
         ppl.make_long_report = make_long_report
 
     return ppl
 
 main_ppl = build_research_agent()
-
+_thread_limiter = Semaphore(2)
 
 # MCP Tool 入口
 async def web_research(
@@ -329,70 +333,67 @@ async def web_research(
     result_container = [None]
 
     def worker():
-        with lazyllm.ThreadPoolExecutor(1) as executor:
-            future = executor.submit(
-                main_ppl,
-                json.dumps(
-                    {"query": query, "language": language, "depth": depth},
-                    ensure_ascii=False,
-                ),
-            )
-            globals["memory"]["topic"] = query
+        with _thread_limiter:
+            with lazyllm.ThreadPoolExecutor(1) as executor:
+                future = executor.submit(
+                    main_ppl,
+                    json.dumps(
+                        {"query": query, "language": language, "depth": depth},
+                        ensure_ascii=False,
+                    ),
+                )
+                # 必须放在submit之后，否则sid不确定
+                globals["memory"] = {
+                    "topic": query,
+                    "processed_count": 0,
+                    "processed_urls": [],
+                }
 
-            llm_log = ""
-            trace_log = ""
-            while True:
-                if value := lazyllm.FileSystemQueue().dequeue():
-                    trace_log = ""
-                    llm_log += "".join(value)
-                    msg_queue.put("/log:" + llm_log)
-                    # await ctx.sample("/log:" + llm_log)
+                llm_log = ""
+                trace_log = ""
+                while True:
+                    if value := lazyllm.FileSystemQueue().dequeue():
+                        trace_log = ""
+                        llm_log += "".join(value)
+                        msg_queue.put("/log:" + llm_log)
 
-                elif (
-                    value := lazyllm.FileSystemQueue()
-                    .get_instance("lazy_trace")
-                    .dequeue()
-                ):
-                    llm_log = ""
-                    trace_log = "".join(value)
-                    msg_queue.put(f"/log:{trace_log}")
-                    # await ctx.sample(f"/log:{trace_log}")
+                    elif (
+                        value := lazyllm.FileSystemQueue()
+                        .get_instance("lazy_trace")
+                        .dequeue()
+                    ):
+                        llm_log = ""
+                        trace_log = "".join(value)
+                        msg_queue.put(f"/log:{trace_log}")
 
-                elif future.done():
-                    break
+                    elif future.done():
+                        break
 
-            answer = future.result()
-            LOG.info(f"\n\n最终回答:\n\n{answer}")
-            return f"<FINAL_ANSWER>{answer}"
+                answer = future.result()
+                result_container[0] = f"<FINAL_ANSWER>{answer}"
 
-    async def run_async_func():
-        result_container[0] = worker()
-        msg_queue.put(None)
-
-    def start_event_loop():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(run_async_func())
-
-    thread = threading.Thread(target=start_event_loop)
+    thread = threading.Thread(target=worker)
     thread.start()
 
     while True:
         try:
             msg = msg_queue.get(timeout=0.5)
-            if msg is None:
-                break  # 收到结束信号
             await ctx.sample(msg)
         except queue.Empty:
             if not thread.is_alive():
                 break
 
     thread.join()
-    result = result_container[0]
-    return result
+    answer = result_container[0]
+    # LOG.info(f"\n\n最终回答:\n\n{answer}")
+    return answer
 
 
 """
+研究课题：Privacy-Preserving Mechanisms in Multi-Access Edge Computing (MEC) Environments
+语言：en
+研究深度：1
+
 Technology & Innovation:
 1. "Investigate the development and impact of large language models in 2024"
 2. "Research the current state of quantum computing and its practical applications"
@@ -435,7 +436,7 @@ def main():
     # )
     # print(f"最终回答:\n{ans}")
     globals["memory"]["topic"] = query
-    with lazyllm.ThreadPoolExecutor(10) as executor:
+    with lazyllm.ThreadPoolExecutor(1) as executor:
         future = executor.submit(
             main_ppl,
             query_json,
