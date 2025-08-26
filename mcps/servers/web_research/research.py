@@ -3,6 +3,7 @@ import lazyllm
 import json
 import queue
 import threading
+import asyncio
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from threading import Semaphore
@@ -376,6 +377,7 @@ async def web_research(
     thread.start()
 
     while True:
+        await asyncio.sleep(0.5)
         try:
             msg = msg_queue.get(timeout=0.5)
             await ctx.sample(msg)

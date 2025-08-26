@@ -21,4 +21,10 @@ task_exe mcps/run_web_research.py --port $port0 &
 port1=$((BASE_PORT + 1))
 task_exe mcps/run_example.py --port $port1 &
 
+port2=$((BASE_PORT + 2))
+task_exe mcps/run_kb_search.py --port $port2 &
+
+port3=$((BASE_PORT + 3))
+task_exe mcps/run_general.py --port $port3 &
+
 wait

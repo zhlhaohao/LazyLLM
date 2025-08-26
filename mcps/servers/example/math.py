@@ -21,3 +21,4 @@ async def add_tool(
     Add two integers and returns the result
     '''
     return a + b
+
