@@ -8,4 +8,4 @@ docker run -itd --name lazyllm --restart=always \
     -v /home/lianghao/logs/lazyllm:/root/logs \
     -p 10010-10020:10010-10020 \
     --env-file .env \
-    lazyllm:250827-3
+    lazyllm:250827-7

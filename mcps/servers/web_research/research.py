@@ -330,57 +330,67 @@ async def web_research(
     """
     search the web and do research works to answer user's query
     """
-    msg_queue = queue.Queue()
+    msg_queue = asyncio.Queue()
     result_container = [None]
 
-    def worker():
-        with _thread_limiter:
-            with lazyllm.ThreadPoolExecutor(1) as executor:
-                future = executor.submit(
-                    main_ppl,
-                    json.dumps(
-                        {"query": query, "language": language, "depth": depth},
-                        ensure_ascii=False,
-                    ),
-                )
-                # 必须放在submit之后，否则sid不确定
-                globals["memory"] = {
-                    "topic": query,
-                    "processed_count": 0,
-                    "processed_urls": [],
-                }
+    async def worker():
+        with lazyllm.ThreadPoolExecutor(1) as executor:
+            future = executor.submit(
+                main_ppl,
+                json.dumps(
+                    {"query": query, "language": language, "depth": depth},
+                    ensure_ascii=False,
+                ),
+            )
+            # 必须放在submit之后，否则sid不确定
+            globals["memory"] = {
+                "topic": query,
+                "processed_count": 0,
+                "processed_urls": [],
+            }
 
-                lazyllm.FileSystemQueue().clear()
-                llm_log = ""
-                trace_log = ""
-                while True:
-                    if value := lazyllm.FileSystemQueue().dequeue():
-                        trace_log = ""
-                        llm_log += "".join(value)
-                        msg_queue.put("/log:" + llm_log)
+            lazyllm.FileSystemQueue().clear()
+            llm_log = ""
+            trace_log = ""
+            while True:
+                if value := lazyllm.FileSystemQueue().dequeue():
+                    trace_log = ""
+                    llm_log += "".join(value)
+                    await msg_queue.put("/log:" + llm_log)
 
-                    elif (
-                        value := lazyllm.FileSystemQueue()
-                        .get_instance("lazy_trace")
-                        .dequeue()
-                    ):
-                        llm_log = ""
-                        trace_log = "".join(value)
-                        msg_queue.put(f"/log:{trace_log}")
+                elif (
+                    value := lazyllm.FileSystemQueue()
+                    .get_instance("lazy_trace")
+                    .dequeue()
+                ):
+                    llm_log = ""
+                    trace_log = "".join(value)
+                    await msg_queue.put(f"/log:{trace_log}")
 
-                    elif future.done():
-                        break
+                elif future.done():
+                    break
 
-                answer = future.result()
-                result_container[0] = f"<FINAL_ANSWER>{answer}"
+            answer = future.result()
+            return f"<FINAL_ANSWER>{answer}"
 
-    thread = threading.Thread(target=worker)
+    async def run_async_func():
+        result = await worker()
+        result_container[0] = result
+        await msg_queue.put(None)
+
+    def start_event_loop():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(run_async_func())
+
+    thread = threading.Thread(target=start_event_loop)
     thread.start()
 
     while True:
-        # await asyncio.sleep(0.1)
         try:
-            msg = msg_queue.get(0.5)
+            msg = await msg_queue.get()
+            if msg is None:
+                break  # 收到结束信号
             await ctx.sample(msg)
         except queue.Empty:
             if not thread.is_alive():
