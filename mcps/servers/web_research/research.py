@@ -350,6 +350,7 @@ async def web_research(
                     "processed_urls": [],
                 }
 
+                lazyllm.FileSystemQueue().clear()
                 llm_log = ""
                 trace_log = ""
                 while True:
@@ -377,9 +378,9 @@ async def web_research(
     thread.start()
 
     while True:
-        await asyncio.sleep(0.5)
+        # await asyncio.sleep(0.1)
         try:
-            msg = msg_queue.get(timeout=0.5)
+            msg = msg_queue.get(0.5)
             await ctx.sample(msg)
         except queue.Empty:
             if not thread.is_alive():
