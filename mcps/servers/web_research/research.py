@@ -307,7 +307,6 @@ def build_research_agent():
 
     return ppl
 
-main_ppl = build_research_agent()
 _thread_limiter = Semaphore(2)
 
 # MCP Tool 入口
@@ -326,6 +325,12 @@ async def web_research(
     """
     msg_queue = asyncio.Queue()
     result_container = [None]
+    cancel_flag = False
+    main_ppl = build_research_agent()
+    # 设置中途取消条件
+    main_ppl._cancel_condition = main_ppl.web_search._cancel_condition = (
+        lambda: cancel_flag
+    )
 
     async def worker():
         with lazyllm.ThreadPoolExecutor(1) as executor:
@@ -387,8 +392,10 @@ async def web_research(
                 break  # 收到结束信号
             result = await ctx.sample(msg)
 
+            # 收到客户端关闭的消息，取消当前的操作
             if result.text == "/client_closed":
-                thread.join(timeout=1)  # 等待线程结束，最多等待1秒
+                cancel_flag = True
+                thread.join(timeout=5)  # 等待线程结束，最多等待5秒
                 LOG.info("395- 客户端已关闭，研究提前终止")
                 return ""
 
@@ -449,6 +456,8 @@ def main():
     # )
     # print(f"最终回答:\n{ans}")
     globals["memory"]["topic"] = query
+    main_ppl = build_research_agent()
+
     with lazyllm.ThreadPoolExecutor(1) as executor:
         future = executor.submit(
             main_ppl,

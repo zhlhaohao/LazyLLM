@@ -177,7 +177,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 hook_objs.append(hook_type(self))
             hook_objs[-1].pre_hook(*args, **kw)
 
-        # _run是子类必须实现的方法，用于执行模块逻辑    
+        # _run是子类必须实现的方法，用于执行模块逻辑
         output = self._run(args[0] if len(args) == 1 else package(args), **kw)
         if self.post_action is not None: self.invoke(self.post_action, output)
         if self._sync: self.wait()
@@ -260,6 +260,15 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
     def bind(self, *args, **kw):
         return bind(self, *args, **kw)
 
+    # 进行中途取消操作判断的回调函数
+    @property
+    def _cancel_condition(self):
+        return getattr(self, "_cancel_condition_var", None)
+
+    @_cancel_condition.setter
+    def _cancel_condition(self, cond):
+        self._cancel_condition_var = cond
+
 
 # input -> module1 -> module2 -> ... -> moduleN -> output
 #                                               \> post-action
@@ -314,6 +323,11 @@ class Pipeline(LazyLLMFlowsBase):
         for _ in range(self._loop_count):
             #  遍历模块链
             for it in self._items:
+                # F8080 中途取消退出循环
+                if callable(self._cancel_condition) and self._cancel_condition():
+                    LOG.warning("Pipeline cancelled!")
+                    break
+
                 # 将上一个模块的输出作为下一个模块的输入
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
                 kw.clear()
@@ -458,7 +472,18 @@ class Parallel(LazyLLMFlowsBase):
                     raise RuntimeError('Parallel execute failed!\n' + '\n'.join(error_msgs))
                 return package([future.result() for future in futures])
         else:
-            return package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
+            # F8080 中途取消退出循环
+            def generate_with_stop(items, inputs, **kw):
+                for it, inp in zip(items, inputs):
+                    if callable(self._cancel_condition) and self._cancel_condition():
+                        LOG.warning("Parallel cancelled!")
+                        break
+
+                    res = self.invoke(it, inp, **kw)
+                    yield res
+
+            return package(generate_with_stop(items, inputs, **kw))
+            # return package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
 
     def _post_process(self, output):
         """
