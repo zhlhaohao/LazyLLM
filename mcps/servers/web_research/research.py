@@ -24,9 +24,9 @@ from pydantic import Field
 from .web_search import (
     agent_source,
     agent_model,
-    agent_en_model,
+    agent_source_1,
+    agent_model_1,
     llm_max_workers,
-    max_tokens,
 )
 from .util import (
     chunk_content,
@@ -86,8 +86,11 @@ def format_input(input):
         valid_threshold = 5
         expand_query_count = 4
     elif depth == 5:
-        valid_threshold = 8
-        expand_query_count = 5
+        valid_threshold = 5
+        expand_query_count = 6
+    elif depth == 6:
+        valid_threshold = 6
+        expand_query_count = 7
     else:
         valid_threshold = 5
         expand_query_count = 3
@@ -120,23 +123,11 @@ def translate_segment(segment, index):
 
     return lazyllm.OnlineChatModule(
         source=agent_source,
-        model=agent_en_model,
+        model=agent_model,
         stream=True,
         enable_thinking=False,
     )(TRANSLATE_PROMPT.format(context=segment))
 
-
-def summary_keypoint(key_point, context, index):
-    if index > 0:  # 只有第1个线程才能输出
-        globals._init_sid()
-
-    prompt = KEYPOINT_SUMMARY_PROMPT.format(context=context, key_point=key_point)
-
-    ans = lazyllm.OnlineChatModule(
-        source=agent_source, model=agent_model, enable_thinking=False, stream=True
-    )(prompt)
-
-    return ans
 
 def translate_summary(summary):
     # 判断语言
@@ -153,7 +144,8 @@ def translate_summary(summary):
         results = []
         with lazyllm.ThreadPoolExecutor(max_workers=llm_max_workers) as executor:
             translate_futures = [
-                executor.submit(translate_segment, segment, index) for index, segment in enumerate(segments)
+                executor.submit(translate_segment, segment, index)
+                for index, segment in enumerate(segments)
             ]
             for future in translate_futures:
                 ans = future.result()
@@ -190,7 +182,6 @@ def make_report(input):
             stream=True,
             static_params={
                 "temperature": 0.6,
-                "max_tokens": max_tokens,
             },
         ).prompt(ChatPrompter(instruction=SUMMARY_PROMPT))(input)
 
@@ -216,47 +207,50 @@ def make_long_report(context):
     ):
         return make_report(context)
 
+    source = agent_source
+    model = agent_model
     try:
-        # views = read_file("keypoints.md")
-        views = lazyllm.OnlineChatModule(
-            source=agent_source,
-            model=agent_model,
-            enable_thinking=False,
-            stream=True,
-            static_params={
-                "temperature": 0.6,
-                "max_tokens": max_tokens,
-            },
-        ).prompt(ChatPrompter(instruction=KEYPOINT_PROMPT))(context)
+        try:
+            views = lazyllm.OnlineChatModule(
+                source=source,
+                model=model,
+                enable_thinking=False,
+                stream=True,
+                static_params={
+                    "temperature": 0.7,
+                    # "max_tokens": max_tokens,
+                },
+            ).prompt(ChatPrompter(instruction=KEYPOINT_PROMPT))(context)
+        except Exception as ex:
+            source = agent_source_1
+            model = agent_model_1
+            views = lazyllm.OnlineChatModule(
+                source=source,
+                model=model,
+                enable_thinking=False,
+                stream=True,
+                static_params={
+                    "temperature": 0.7,
+                },
+            ).prompt(ChatPrompter(instruction=KEYPOINT_PROMPT))(context)
+
         views = json.loads(extract_between_braces(views)).get("views", [])
 
+        def summary_keypoint(key_point, context, index):
+            if index > 0:  # 只有第1个线程才能输出
+                globals._init_sid()
+
+            prompt = KEYPOINT_SUMMARY_PROMPT.format(
+                context=context, key_point=key_point
+            )
+
+            ans = lazyllm.OnlineChatModule(
+                source=source, model=model, enable_thinking=False, stream=True
+            )(prompt)
+
+            return ans
+
         output = []
-        # for i, view in enumerate(views):
-        #     view_name = view.get(
-        #         "view",
-        #         f"view{i + 1}",
-        #     )
-
-        #     key_points = view.get("key_points", [])
-        #     output.append(f"## {view_name}")
-        #     with ThreadPoolExecutor(max_workers=llm_max_workers) as executor:
-        #         futures = []
-        #         for key_point in key_points:
-        #             output.append(f"### {key_point}")
-        #             # Submit the summary_keypoint function to the thread pool
-        #             future = executor.submit(summary_keypoint, key_point, context)
-        #             futures.append(
-        #                 (future, len(output))
-        #             )  # Store future and its position in output list
-        #             output.append("")  # Placeholder for the result
-
-        #         # Collect results as they complete
-        #         for future, index in futures:
-        #             ans = future.result()
-        #             output[index] = (
-        #                 ans  # Fill in the placeholder with the actual result
-        #             )
-
         with lazyllm.ThreadPoolExecutor(max_workers=llm_max_workers) as executor:
             futures = []
             for i, view in enumerate(views):
@@ -391,7 +385,13 @@ async def web_research(
             msg = await msg_queue.get()
             if msg is None:
                 break  # 收到结束信号
-            await ctx.sample(msg)
+            result = await ctx.sample(msg)
+
+            if result.text == "/client_closed":
+                thread.join(timeout=1)  # 等待线程结束，最多等待1秒
+                LOG.info("395- 客户端已关闭，研究提前终止")
+                return ""
+
         except queue.Empty:
             if not thread.is_alive():
                 break

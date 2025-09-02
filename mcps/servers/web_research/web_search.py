@@ -14,17 +14,13 @@ from .util import get_current_date_us_full, contains_chinese, lazy_trace
 
 MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", 2000))
 
-max_tokens = 4000
-if os.getenv("MAX_TOKENS"):
-    max_tokens = int(os.getenv("MAX_TOKENS"))
-
-
 llm_max_workers = int(os.environ.get("LLM_MAX_WORKERS", "4"))
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=llm_max_workers)
 
 agent_source = os.environ.get("AGENT_SOURCE", "qwen")
 agent_model = os.environ.get("AGENT_MODEL", "qwen3-32b")
-agent_en_model = os.environ.get("AGENT_EN_MODEL", "qwen3-32b")
+agent_source_1 = os.environ.get("AGENT_SOURCE_1", "qwen")
+agent_model_1 = os.environ.get("AGENT_MODEL_1", "qwen3-32b")
 search_max_results = 100
 
 @fc_register("tool")
@@ -213,18 +209,15 @@ async def crawl_many_pages(
 def extract_relevant_context(query, page_text, page_url, language):
     prompt = EXTRACT_PROMPT.format(
         query=query,
-        page_text=page_text[:20000],
+        page_text=page_text[:60000],
         context_length=MAX_CONTEXT_LENGTH,
         current_date=get_current_date_us_full(),
         page_url=page_url,
     )
-    model = agent_model
-    if language != "zh-CN":
-        model = agent_en_model
 
     try:
         result = OnlineChatModule(
-            source=agent_source, model=model, stream=True, enable_thinking=False
+            source=agent_source, model=agent_model, stream=True, enable_thinking=False
         )(prompt, llm_chat_history=[])
         return result
     except Exception as e:
